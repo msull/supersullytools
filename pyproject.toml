@@ -1,0 +1,92 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "supersullytools"
+version = "0.1.0"
+description = "This is a Python package that brings together a suite of utilities and helpers across several domains of software development."
+readme = "README.md"
+authors = [{ name = "Sully", email = "sully@sadburger.com" }]
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+]
+keywords = ["dynamodb", "singletabledesign"]
+requires-python = ">=3.10"
+dependencies = [
+    "boto3",
+    "diskcache",
+    "humanize",
+    "invoke",
+    "openai",
+    "pydantic>2",
+    "questionary",
+    "simplesingletable>=1.6",
+    "ulid-py",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "boto3-stubs[dynamodb]",
+    "bumpver",
+    "invoke",
+    "logzero",
+    "pip-tools",
+    "pytest",
+    "pytest-cov",
+    "pytest-docker",
+    "pytest-mock",
+    "ruff",
+    "streamlit",
+    "streamlit-extras",
+    "watchdog",
+]
+build = [
+    "build",
+    "twine",
+]
+
+[project.urls]
+Homepage = "https://github.com/msull/supersullytools"
+
+[tool.isort]
+profile = "black"
+line_length = 120
+
+[tool.black]
+line-length = 120
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.bumpver]
+current_version = "0.1.0"
+version_pattern = "MAJOR.MINOR.PATCH"
+commit_message = "Bump version {old_version} -> {new_version}"
+commit = true
+tag = true
+push = false
+
+[tool.bumpver.file_patterns]
+"pyproject.toml" = ['current_version = "{version}"', 'version = "{version}"']
+"src/supersullytools/__init__.py" = ['package_version = "{version}"']
+"README.md" = ["**Latest Version:** {version}"]
+
+
+[tool.pytest.ini_options]
+addopts = """
+-v -p no:warnings --no-header --durations=3 --strict-markers
+--cov-report=html:coverage_report --cov=supersullytools
+"""
+pythonpath = ["src/"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "if TYPE_CHECKING:",
+    "if __name__ == \"__main__\"",
+]
