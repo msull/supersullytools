@@ -100,3 +100,15 @@ def halt_dynamodb_local(c: Context):
 def run_streamlit_app(c: Context):
     with from_repo_root(c):
         c.run("streamlit run ./streamlit_app.py --server.headless True")
+
+
+@task
+def fullrelease(c: Context, major=False, minor=False, patch=False):
+    lint(c)
+    with from_repo_root(c):
+        c.run("pytest", pty=True)
+    bumpver(c, major, minor, patch)
+    build(c)
+    publish(c, testpypi=False)
+    c.run("git push", pty=True)
+    c.run("git push --tags", pty=True)
