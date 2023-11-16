@@ -14,7 +14,7 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
 ]
-keywords = ["dynamodb", "singletabledesign"]
+keywords = ["streamlit", "dynamodb"]
 requires-python = ">=3.10"
 dependencies = [
     "boto3",
