@@ -121,7 +121,6 @@ class SessionManagerInterface(ABC, Generic[SessionType]):
                 # no, the requested session isn't loaded -- clear out any existing session data
                 self.logger.info("Clearing outdated session")
                 self.clear_session_data()
-
         if datakey not in st.session_state:
             st.session_state[datakey] = {}
 

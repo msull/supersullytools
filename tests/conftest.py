@@ -13,6 +13,21 @@ if TYPE_CHECKING:
     from mypy_boto3_dynamodb.service_resource import Table
 
 
+@pytest.fixture()
+def dynamodb_memory(local_dynamodb_test_table, dynamodb_via_docker) -> DynamoDBMemory:
+    reset_local_dynamodb_test_table(local_dynamodb_test_table)
+    yield DynamoDBMemory(
+        logger=logger,
+        table_name=local_dynamodb_test_table.table_name,
+        endpoint_url=dynamodb_via_docker,
+        connection_params={
+            "aws_access_key_id": "unused",
+            "aws_secret_access_key": "unused",
+            "region_name": "us-west-2",
+        },
+    )
+
+
 @pytest.fixture(scope="session")
 def docker_compose_file(pytestconfig):
     return os.path.join(str(pytestconfig.rootdir), "tests", "docker-compose.yml")
@@ -130,17 +145,3 @@ def reset_local_dynamodb_test_table(table: "Table"):
     logger.debug(f"Resetting table {table.table_name}")
     truncate_dynamo_table(table)
 
-
-@pytest.fixture()
-def dynamodb_memory(local_dynamodb_test_table, dynamodb_via_docker) -> DynamoDBMemory:
-    reset_local_dynamodb_test_table(local_dynamodb_test_table)
-    yield DynamoDBMemory(
-        logger=logger,
-        table_name=local_dynamodb_test_table.table_name,
-        endpoint_url=dynamodb_via_docker,
-        connection_params={
-            "aws_access_key_id": "unused",
-            "aws_secret_access_key": "unused",
-            "region_name": "us-west-2",
-        },
-    )
