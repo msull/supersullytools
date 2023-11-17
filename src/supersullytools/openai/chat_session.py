@@ -57,8 +57,3 @@ def check_for_flagged_content(msg: str):
 
     if response.results[0].flagged:
         raise FlaggedInputError()
-
-
-cs = ChatSession()
-cs.user_says("hi")
-print(cs.get_ai_response())
