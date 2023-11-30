@@ -2,12 +2,12 @@ import os
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-import requests
-from logzero import logger
 import boto3
 import pytest
-from simplesingletable.utils import truncate_dynamo_table
+import requests
+from logzero import logger
 from simplesingletable import DynamoDBMemory
+from simplesingletable.utils import truncate_dynamo_table
 
 if TYPE_CHECKING:
     from mypy_boto3_dynamodb.service_resource import Table

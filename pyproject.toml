@@ -22,6 +22,8 @@ dependencies = [
     "humanize",
     "invoke",
     "openai",
+    "pandas",
+    "numpy",
     "pydantic>2",
     "questionary",
     "simplesingletable>=1.6",

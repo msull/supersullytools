@@ -1,8 +1,10 @@
 from dataclasses import dataclass, field
+from logging import Logger
 from typing import Optional
 
 import openai
 from logzero import logger
+from openai.types import ModerationCreateResponse
 from openai.types.chat import ChatCompletion
 
 
@@ -12,6 +14,11 @@ class ChatSession:
     reinforcement_system_msg: Optional[str] = None
     history: list = field(default_factory=list)
     model: str = "gpt-3.5-turbo-0613"
+    log: Logger = None
+
+    def __post_init__(self):
+        if self.log is None:
+            self.log = logger
 
     @classmethod
     def list_gpt_models(cls):
@@ -41,19 +48,21 @@ class ChatSession:
 
         if reinforcement_system_msg:
             chat_history.append({"role": "system", "content": reinforcement_system_msg})
-        logger.info("Generating AI ChatCompletion")
-        logger.debug(chat_history)
+        self.log.info("Generating AI ChatCompletion")
+        self.log.debug(chat_history)
         response = openai.chat.completions.create(model=self.model, messages=chat_history)
-        logger.debug(response)
+        self.log.debug(response)
         return response
 
 
 class FlaggedInputError(RuntimeError):
-    pass
+    def __init__(self, response: ModerationCreateResponse):
+        super().__init__()
+        self.response = response
 
 
 def check_for_flagged_content(msg: str):
     response = openai.moderations.create(input=msg)
 
     if response.results[0].flagged:
-        raise FlaggedInputError()
+        raise FlaggedInputError(response=response)
