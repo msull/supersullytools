@@ -1,9 +1,10 @@
 from datetime import datetime
 from random import choices
 from string import ascii_lowercase
+from typing import TYPE_CHECKING
 
-import numpy as np
-import pandas as pd
+if TYPE_CHECKING:
+    from pandas import DataFrame
 
 
 def date_id(now=None):
@@ -11,7 +12,10 @@ def date_id(now=None):
     return now.strftime("%Y%m%d%H%M%S") + "".join(choices(ascii_lowercase, k=6))
 
 
-def load_data_from_file(file, replace_nan=True) -> pd.DataFrame:
+def load_data_from_file(file, replace_nan=True) -> "DataFrame":
+    import numpy as np
+    import pandas as pd
+
     if file.type == "text/csv":
         data = pd.read_csv(file, dtype=str, low_memory=False)
     elif file.type == "text/tab-separated-values":

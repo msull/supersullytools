@@ -3,7 +3,6 @@ from logging import Logger
 from typing import Optional
 
 import openai
-from logzero import logger
 from openai.types import ModerationCreateResponse
 from openai.types.chat import ChatCompletion
 
@@ -18,6 +17,8 @@ class ChatSession:
 
     def __post_init__(self):
         if self.log is None:
+            from logzero import logger
+
             self.log = logger
 
     @classmethod

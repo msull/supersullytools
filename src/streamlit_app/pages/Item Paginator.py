@@ -25,7 +25,7 @@ def display_sample_item(item_idx):
 
 
 def main():
-    st.write('Use left/right arrows to navigate between items.')
+    st.write("Use left/right arrows to navigate between items.")
     item_names = [x["name"] for x in sample_data]
     item_paginator(
         title="Available Items",

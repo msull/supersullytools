@@ -4,36 +4,36 @@
 #
 #    pip-compile --extra=build --extra=dev --strip-extras pyproject.toml
 #
-altair==5.1.2
+altair==5.2.0
     # via streamlit
 annotated-types==0.6.0
     # via pydantic
-anyio==3.7.1
+anyio==4.2.0
     # via
     #   httpx
     #   openai
-attrs==23.1.0
+attrs==23.2.0
     # via
     #   jsonschema
     #   pytest-docker
     #   referencing
-beautifulsoup4==4.12.2
+beautifulsoup4==4.12.3
     # via favicon
-black==23.11.0
+black==24.2.0
     # via supersullytools (pyproject.toml)
 blinker==1.7.0
     # via streamlit
-boto3==1.29.2
+boto3==1.34.42
     # via
     #   simplesingletable
     #   supersullytools (pyproject.toml)
-boto3-stubs==1.29.2
+boto3-stubs==1.34.42
     # via supersullytools (pyproject.toml)
-botocore==1.32.2
+botocore==1.34.42
     # via
     #   boto3
     #   s3transfer
-botocore-stubs==1.32.2
+botocore-stubs==1.34.42
     # via boto3-stubs
 build==1.0.3
     # via
@@ -43,7 +43,7 @@ bumpver==2023.1129
     # via supersullytools (pyproject.toml)
 cachetools==5.3.2
     # via streamlit
-certifi==2023.7.22
+certifi==2024.2.2
     # via
     #   httpcore
     #   httpx
@@ -60,7 +60,7 @@ colorama==0.4.6
     # via bumpver
 contourpy==1.2.0
     # via matplotlib
-coverage==7.3.2
+coverage==7.4.1
     # via
     #   coverage
     #   pytest-cov
@@ -68,25 +68,25 @@ cycler==0.12.1
     # via matplotlib
 diskcache==5.6.3
     # via supersullytools (pyproject.toml)
-distro==1.8.0
+distro==1.9.0
     # via openai
 docutils==0.20.1
     # via readme-renderer
 entrypoints==0.4
     # via streamlit-extras
-exceptiongroup==1.1.3
+exceptiongroup==1.2.0
     # via
     #   anyio
     #   pytest
-faker==20.0.3
+faker==23.2.0
     # via streamlit-faker
 favicon==0.7.0
     # via markdownlit
-fonttools==4.44.3
+fonttools==4.48.1
     # via matplotlib
 gitdb==4.0.11
     # via gitpython
-gitpython==3.1.40
+gitpython==3.1.41
     # via streamlit
 h11==0.14.0
     # via httpcore
@@ -95,20 +95,20 @@ htbuilder==0.6.2
     #   markdownlit
     #   st-annotated-text
     #   streamlit-extras
-httpcore==1.0.2
+httpcore==1.0.3
     # via httpx
-httpx==0.25.1
+httpx==0.26.0
     # via openai
-humanize==4.8.0
+humanize==4.9.0
     # via
     #   simplesingletable
     #   supersullytools (pyproject.toml)
-idna==3.4
+idna==3.6
     # via
     #   anyio
     #   httpx
     #   requests
-importlib-metadata==6.8.0
+importlib-metadata==7.0.1
     # via
     #   keyring
     #   streamlit
@@ -117,9 +117,9 @@ iniconfig==2.0.0
     # via pytest
 invoke==2.2.0
     # via supersullytools (pyproject.toml)
-jaraco-classes==3.3.0
+jaraco-classes==3.3.1
     # via keyring
-jinja2==3.1.2
+jinja2==3.1.3
     # via
     #   altair
     #   pydeck
@@ -130,9 +130,9 @@ jmespath==1.0.1
     # via
     #   boto3
     #   botocore
-jsonschema==4.20.0
+jsonschema==4.21.1
     # via altair
-jsonschema-specifications==2023.11.1
+jsonschema-specifications==2023.12.1
     # via jsonschema
 keyring==24.3.0
     # via twine
@@ -144,9 +144,9 @@ logzero==1.7.0
     # via supersullytools (pyproject.toml)
 looseversion==1.3.0
     # via bumpver
-lxml==4.9.3
+lxml==5.1.0
     # via markdownlit
-markdown==3.5.1
+markdown==3.5.2
     # via
     #   markdownlit
     #   pymdown-extensions
@@ -154,23 +154,23 @@ markdown-it-py==3.0.0
     # via rich
 markdownlit==0.0.7
     # via streamlit-extras
-markupsafe==2.1.3
+markupsafe==2.1.5
     # via jinja2
-matplotlib==3.8.1
+matplotlib==3.8.2
     # via streamlit-faker
 mdurl==0.1.2
     # via markdown-it-py
-more-itertools==10.1.0
+more-itertools==10.2.0
     # via
     #   htbuilder
     #   jaraco-classes
-mypy-boto3-dynamodb==1.29.0
+mypy-boto3-dynamodb==1.34.34
     # via boto3-stubs
 mypy-extensions==1.0.0
     # via black
-nh3==0.2.14
+nh3==0.2.15
     # via readme-renderer
-numpy==1.26.2
+numpy==1.26.4
     # via
     #   altair
     #   contourpy
@@ -179,7 +179,8 @@ numpy==1.26.2
     #   pyarrow
     #   pydeck
     #   streamlit
-openai==1.3.2
+    #   supersullytools (pyproject.toml)
+openai==1.12.0
     # via supersullytools (pyproject.toml)
 packaging==23.2
     # via
@@ -189,13 +190,14 @@ packaging==23.2
     #   matplotlib
     #   pytest
     #   streamlit
-pandas==2.1.3
+pandas==2.2.0
     # via
     #   altair
     #   streamlit
-pathspec==0.11.2
+    #   supersullytools (pyproject.toml)
+pathspec==0.12.1
     # via black
-pillow==10.1.0
+pillow==10.2.0
     # via
     #   matplotlib
     #   streamlit
@@ -203,38 +205,40 @@ pip-tools==7.3.0
     # via supersullytools (pyproject.toml)
 pkginfo==1.9.6
     # via twine
-platformdirs==4.0.0
+platformdirs==4.2.0
     # via black
-pluggy==1.3.0
+pluggy==1.4.0
     # via pytest
+prometheus-client==0.20.0
+    # via streamlit-extras
 prompt-toolkit==3.0.36
     # via questionary
-protobuf==4.25.1
+protobuf==4.25.2
     # via
     #   streamlit
     #   streamlit-extras
-pyarrow==14.0.1
+pyarrow==15.0.0
     # via streamlit
-pydantic==2.5.1
+pydantic==2.6.1
     # via
     #   openai
     #   simplesingletable
     #   supersullytools (pyproject.toml)
-pydantic-core==2.14.3
+pydantic-core==2.16.2
     # via pydantic
 pydeck==0.8.1b0
     # via streamlit
-pygments==2.16.1
+pygments==2.17.2
     # via
     #   readme-renderer
     #   rich
-pymdown-extensions==10.4
+pymdown-extensions==10.7
     # via markdownlit
 pyparsing==3.1.1
     # via matplotlib
 pyproject-hooks==1.0.0
     # via build
-pytest==7.4.3
+pytest==8.0.0
     # via
     #   pytest-cov
     #   pytest-docker
@@ -242,7 +246,7 @@ pytest==7.4.3
     #   supersullytools (pyproject.toml)
 pytest-cov==4.1.0
     # via supersullytools (pyproject.toml)
-pytest-docker==2.0.1
+pytest-docker==3.1.1
     # via supersullytools (pyproject.toml)
 pytest-mock==3.12.0
     # via supersullytools (pyproject.toml)
@@ -253,7 +257,7 @@ python-dateutil==2.8.2
     #   matplotlib
     #   pandas
     #   streamlit
-pytz==2023.3.post1
+pytz==2024.1
     # via pandas
 pyyaml==6.0.1
     # via pymdown-extensions
@@ -261,7 +265,7 @@ questionary==2.0.1
     # via supersullytools (pyproject.toml)
 readme-renderer==42.0
     # via twine
-referencing==0.31.0
+referencing==0.33.0
     # via
     #   jsonschema
     #   jsonschema-specifications
@@ -279,15 +283,15 @@ rich==13.7.0
     # via
     #   streamlit
     #   twine
-rpds-py==0.13.0
+rpds-py==0.18.0
     # via
     #   jsonschema
     #   referencing
-ruff==0.1.5
+ruff==0.2.1
     # via supersullytools (pyproject.toml)
-s3transfer==0.7.0
+s3transfer==0.10.0
     # via boto3
-simplesingletable==1.6.0
+simplesingletable==2.3.2
     # via supersullytools (pyproject.toml)
 six==1.16.0
     # via python-dateutil
@@ -297,11 +301,12 @@ sniffio==1.3.0
     # via
     #   anyio
     #   httpx
+    #   openai
 soupsieve==2.5
     # via beautifulsoup4
 st-annotated-text==4.0.1
     # via streamlit-extras
-streamlit==1.28.2
+streamlit==1.31.1
     # via
     #   markdownlit
     #   streamlit-camera-input-live
@@ -316,11 +321,11 @@ streamlit==1.28.2
     #   supersullytools (pyproject.toml)
 streamlit-camera-input-live==0.2.0
     # via streamlit-extras
-streamlit-card==0.0.61
+streamlit-card==1.0.0
     # via streamlit-extras
 streamlit-embedcode==0.1.2
     # via streamlit-extras
-streamlit-extras==0.3.5
+streamlit-extras==0.4.0
     # via
     #   markdownlit
     #   streamlit-faker
@@ -329,11 +334,11 @@ streamlit-faker==0.0.3
     # via streamlit-extras
 streamlit-image-coordinates==0.1.6
     # via streamlit-extras
-streamlit-keyup==0.2.0
+streamlit-keyup==0.2.3
     # via streamlit-extras
 streamlit-toggle-switch==1.0.2
     # via streamlit-extras
-streamlit-vertical-slider==1.0.2
+streamlit-vertical-slider==2.5.5
     # via streamlit-extras
 tenacity==8.2.3
     # via streamlit
@@ -349,21 +354,22 @@ tomli==2.0.1
     #   pip-tools
     #   pyproject-hooks
     #   pytest
-toolz==0.12.0
+toolz==0.12.1
     # via altair
-tornado==6.3.3
+tornado==6.4
     # via streamlit
-tqdm==4.66.1
+tqdm==4.66.2
     # via openai
-twine==4.0.2
+twine==5.0.0
     # via supersullytools (pyproject.toml)
-types-awscrt==0.19.12
+types-awscrt==0.20.3
     # via botocore-stubs
-types-s3transfer==0.7.0
+types-s3transfer==0.10.0
     # via boto3-stubs
-typing-extensions==4.8.0
+typing-extensions==4.9.0
     # via
     #   altair
+    #   anyio
     #   black
     #   boto3-stubs
     #   mypy-boto3-dynamodb
@@ -371,7 +377,7 @@ typing-extensions==4.8.0
     #   pydantic
     #   pydantic-core
     #   streamlit
-tzdata==2023.3
+tzdata==2024.1
     # via pandas
 tzlocal==5.2
     # via streamlit
@@ -386,11 +392,11 @@ urllib3==2.0.7
     #   twine
 validators==0.22.0
     # via streamlit
-watchdog==3.0.0
+watchdog==4.0.0
     # via supersullytools (pyproject.toml)
-wcwidth==0.2.10
+wcwidth==0.2.13
     # via prompt-toolkit
-wheel==0.41.3
+wheel==0.42.0
     # via pip-tools
 zipp==3.17.0
     # via importlib-metadata

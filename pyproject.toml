@@ -16,35 +16,34 @@ classifiers = [
 ]
 keywords = ["streamlit", "dynamodb"]
 requires-python = ">=3.10"
-dependencies = [
-    "boto3",
-    "diskcache",
-    "humanize",
-    "invoke",
-    "openai",
-    "pandas",
-    "numpy",
-    "pydantic>2",
-    "questionary",
-    "simplesingletable>=1.6",
-    "ulid-py",
-]
+dependencies = []
 
 [project.optional-dependencies]
 dev = [
+    "boto3",
     "black",
     "boto3-stubs[dynamodb]",
     "bumpver",
+    "diskcache",
+    "humanize",
+    "invoke",
     "invoke",
     "logzero",
+    "numpy",
+    "openai",
+    "pandas",
     "pip-tools",
+    "pydantic>2",
     "pytest",
     "pytest-cov",
     "pytest-docker",
     "pytest-mock",
+    "questionary",
     "ruff",
+    "simplesingletable>=1.6",
     "streamlit",
     "streamlit-extras",
+    "ulid-py",
     "watchdog",
 ]
 build = [

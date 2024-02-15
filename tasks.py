@@ -17,9 +17,10 @@ def compile_requirements(c: Context, install=True, upgrade=False):
     with from_repo_root(c):
         upgrade_flag = "--upgrade" if upgrade else ""
         c.run(f"pip-compile {upgrade_flag} -v --strip-extras --extra dev --extra build pyproject.toml", pty=True)
-        c.run('echo "-e ." >> requirements.txt')
+        c.run("mv requirements.txt requirements.dev.txt", pty=True)
+        c.run('echo "-e ." >> requirements.dev.txt')
         if install:
-            c.run("pip-sync", pty=True)
+            c.run("pip-sync requirements.dev.txt", pty=True)
 
 
 @task
@@ -64,11 +65,15 @@ def publish(c: Context, testpypi=True):
 
 
 @task
-def lint(c: Context):
+def lint(c: Context, check=False):
+    """When cheeck is True, fails instead of fixes"""
     with from_repo_root(c):
-        c.run("black src/ tasks.py")
-        c.run("isort src/ tasks.py")
-        c.run("ruff src/ tasks.py --fix")
+        black_flag = "--check" if check else ""
+        c.run(f"black src/ tasks.py {black_flag}", pty=True)
+        isort_flag = "--check-only" if check else ""
+        c.run(f"isort src/ tasks.py {isort_flag}", pty=True)
+        ruff_flag = "--exit-non-zero-on-fix" if check else "--fix"
+        c.run(f"ruff src/ tasks.py {ruff_flag}", pty=True)
 
 
 @task
@@ -99,12 +104,12 @@ def halt_dynamodb_local(c: Context):
 @task
 def run_streamlit_app(c: Context):
     with from_repo_root(c):
-        c.run("streamlit run ./streamlit_app/Home.py --server.headless True")
+        c.run("streamlit run ./src/streamlit_app/Home.py --server.headless True")
 
 
 @task
 def fullrelease(c: Context, major=False, minor=False, patch=False):
-    lint(c)
+    lint(c, check=True)
     with from_repo_root(c):
         c.run("pytest", pty=True)
     bumpver(c, major, minor, patch)

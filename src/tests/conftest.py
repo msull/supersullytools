@@ -30,7 +30,7 @@ def dynamodb_memory(local_dynamodb_test_table, dynamodb_via_docker) -> DynamoDBM
 
 @pytest.fixture(scope="session")
 def docker_compose_file(pytestconfig):
-    return os.path.join(str(pytestconfig.rootdir), "tests", "docker-compose.yml")
+    return os.path.join(str(pytestconfig.rootdir), "src", "tests", "docker-compose.yml")
 
 
 def is_responsive(url):
@@ -144,4 +144,3 @@ def local_dynamodb_test_table(dynamodb_via_docker) -> "Table":
 def reset_local_dynamodb_test_table(table: "Table"):
     logger.debug(f"Resetting table {table.table_name}")
     truncate_dynamo_table(table)
-
