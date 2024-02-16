@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from random import choices
 from string import ascii_lowercase
@@ -5,6 +6,11 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pandas import DataFrame
+
+
+def camel_to_snake(camel_case):
+    snake_case = re.sub(r"(?<!^)(?=[A-Z])", "_", camel_case).lower()
+    return snake_case
 
 
 def date_id(now=None):

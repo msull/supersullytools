@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 from logging import Logger
-from typing import ClassVar, Generic, Optional, Type, TypeVar
+from typing import ClassVar, Generic, MutableMapping, Optional, Type, TypeVar
 
 import streamlit as st
 from humanize import precisedelta
@@ -81,6 +81,8 @@ class SessionManagerInterface(ABC, Generic[SessionType]):
     """
 
     logger: Logger
+    model_type: Type[SessionType]
+    query_param_name: Optional[str] = None
 
     @abstractmethod
     def persist_session(self, session: SessionType):
@@ -90,13 +92,21 @@ class SessionManagerInterface(ABC, Generic[SessionType]):
     def get_session(self, session_id: str) -> Optional[SessionType]:
         pass
 
-    @abstractmethod
-    def get_session_model(self) -> Type[SessionType]:
-        pass
+    # @abstractmethod
+    # def get_session_model(self) -> Type[SessionType]:
+    #     pass
+    #
+    # @abstractmethod
+    # def get_query_param_name(self) -> str:
+    #     pass
 
-    @abstractmethod
+    def get_session_model(self) -> Type[SessionType]:
+        return self.model_type
+
     def get_query_param_name(self) -> str:
-        pass
+        if not self.query_param_name:
+            return self.get_session_model().__name__
+        return self.query_param_name
 
     def set_session_expiration(self, session: SessionType, expiration: datetime | timedelta):
         match expiration:
@@ -113,10 +123,8 @@ class SessionManagerInterface(ABC, Generic[SessionType]):
 
     def init_session(self, expiration: Optional[datetime | timedelta] = None) -> SessionType:
         datakey = self.get_session_model().__name__
-        query_session = st.experimental_get_query_params().get(self.get_query_param_name())
+        query_session = st.query_params.get(self.get_query_param_name())
         if query_session:
-            query_session = query_session[0]
-
             if st.session_state.get(datakey, {}).get("session_id") != query_session:
                 # no, the requested session isn't loaded -- clear out any existing session data
                 self.logger.info("Clearing outdated session")
@@ -132,10 +140,11 @@ class SessionManagerInterface(ABC, Generic[SessionType]):
             self.logger.info("Loading session from query param")
             session = self.get_session(query_session)
             if not session:
-                self.logger.warning("No session matching query param found")
-                existing_params = st.experimental_get_query_params()
-                existing_params.pop(self.get_query_param_name())
-                st.experimental_set_query_params(**existing_params)
+                self.logger.warning(f"No session matching query param found {query_session=}")
+                try:
+                    del st.query_params[self.get_query_param_name()]
+                except KeyError:
+                    pass
 
         if not session:
             self.logger.info(f"Starting new session {datakey=}")
@@ -157,6 +166,10 @@ class SessionManagerInterface(ABC, Generic[SessionType]):
     def clear_session_data(self):
         datakey = self.get_session_model().__name__
         st.session_state.pop(datakey, None)
+        try:
+            del st.query_params[self.get_query_param_name()]
+        except KeyError:
+            pass
 
     def switch_session(self, switch_to_session_id):
         incoming_session = self.get_session(switch_to_session_id)
@@ -164,7 +177,37 @@ class SessionManagerInterface(ABC, Generic[SessionType]):
         incoming_session.save_to_session_state()
 
 
-class MemorySessionManager(SessionManagerInterface[SessionType]):
+class InMemorySessionManager(SessionManagerInterface[SessionType]):
+    """Manager with no persistence at all."""
+
+    def __init__(
+        self,
+        model_type: Type[SessionType],
+        logger,
+        memory: Optional[MutableMapping] = None,
+        query_param_name: Optional[str] = None,
+    ):
+        if memory is None:
+            memory = {}
+        self.session_store = memory
+        self.query_param_name = query_param_name
+        self.logger = logger
+
+        if not issubclass(model_type, StreamlitSessionBase):
+            raise TypeError("model_type must be a subclass of StreamlitSessionBase")
+        self.model_type = model_type
+
+    def persist_session(self, session: SessionType):
+        self.session_store[session.session_id] = session
+        st.query_params[self.get_query_param_name()] = session.session_id
+
+    def get_session(self, session_id: str) -> Optional[SessionType]:
+        self.logger.info("Getting session from memory")
+        if db_session := self.session_store.get(session_id):
+            return db_session
+
+
+class DynamoDbSessionManager(SessionManagerInterface[SessionType]):
     """Manages user sessions using DynamoDB as a storage backend in a Streamlit application.
 
     Attributes:
@@ -192,10 +235,7 @@ class MemorySessionManager(SessionManagerInterface[SessionType]):
         query_param_name: Optional[str] = None,
         enable_versioning: bool = False,
     ):
-        if query_param_name is None:
-            query_param_name = model_type.__name__
-
-        self._query_param_name = query_param_name
+        self.query_param_name = query_param_name
         self.logger = logger
         self.enable_versioning = enable_versioning
         self._memory = memory
@@ -232,12 +272,6 @@ class MemorySessionManager(SessionManagerInterface[SessionType]):
 
         self._db_model = DbSession
 
-    def get_session_model(self) -> Type[SessionType]:
-        return self.model_type
-
-    def get_query_param_name(self) -> str:
-        return self._query_param_name
-
     def persist_session(self, session: SessionType):
         existing = self.get_db_session(session.session_id)
         if not existing:
@@ -245,9 +279,7 @@ class MemorySessionManager(SessionManagerInterface[SessionType]):
         else:
             if existing.session != session:
                 self._memory.update_existing(existing, update_obj={"session": session})
-        existing_params = st.experimental_get_query_params()
-        existing_params[self.get_query_param_name()] = session.session_id
-        st.experimental_set_query_params(**existing_params)
+        st.query_params[self.get_query_param_name()] = session.session_id
 
     def get_session(self, session_id: str) -> Optional[SessionType]:
         self.logger.info("Getting session from database")

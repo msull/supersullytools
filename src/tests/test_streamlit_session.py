@@ -10,7 +10,7 @@ def app_script():
     class TestSession(streamlit_sst.StreamlitSessionBase):
         name: str = "Guest"
 
-    manager = streamlit_sst.MemorySessionManager(
+    manager = streamlit_sst.DynamoDbSessionManager(
         memory=st.session_state.dynamodb_memory, model_type=TestSession, logger=logger
     )
     session = manager.init_session()
