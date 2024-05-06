@@ -23,6 +23,7 @@ _T = TypeVar("_T", bound=ChatTool)
 
 # NOTE: this is now "legacy" and I'm using the supersullytools.llm.completions CompletionHandler class now
 
+
 @dataclass
 class ChatSession:
     initial_system_message: Optional[str] = None

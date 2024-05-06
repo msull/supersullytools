@@ -73,7 +73,7 @@ def lint(c: Context, check=False):
         isort_flag = "--check-only" if check else ""
         c.run(f"isort src/ tasks.py {isort_flag}", pty=True)
         ruff_flag = "--exit-non-zero-on-fix" if check else "--fix"
-        c.run(f"ruff src/ tasks.py {ruff_flag}", pty=True)
+        c.run(f"ruff check src/ tasks.py {ruff_flag}", pty=True)
 
 
 @task

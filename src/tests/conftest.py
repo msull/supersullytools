@@ -6,7 +6,7 @@ import boto3
 import pytest
 import requests
 from logzero import logger
-from simplesingletable import DynamoDBMemory
+from simplesingletable import DynamoDbMemory
 from simplesingletable.utils import truncate_dynamo_table
 
 if TYPE_CHECKING:
@@ -14,9 +14,9 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture()
-def dynamodb_memory(local_dynamodb_test_table, dynamodb_via_docker) -> DynamoDBMemory:
+def dynamodb_memory(local_dynamodb_test_table, dynamodb_via_docker) -> DynamoDbMemory:
     reset_local_dynamodb_test_table(local_dynamodb_test_table)
-    yield DynamoDBMemory(
+    yield DynamoDbMemory(
         logger=logger,
         table_name=local_dynamodb_test_table.table_name,
         endpoint_url=dynamodb_via_docker,

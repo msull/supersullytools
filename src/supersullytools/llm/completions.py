@@ -2,13 +2,13 @@ import json
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from logging import Logger
-from typing import TYPE_CHECKING, Literal, Optional, Union, TypeVar
+from typing import TYPE_CHECKING, Literal, Optional, TypeVar, Union
 
 import boto3
 import openai
 import requests
 from openai.types.chat import ChatCompletion as OpenAiChatCompletion
-from pydantic import BaseModel, AwareDatetime, computed_field
+from pydantic import AwareDatetime, BaseModel, computed_field
 
 if TYPE_CHECKING:
     from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
