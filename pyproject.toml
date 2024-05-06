@@ -22,7 +22,7 @@ dependencies = []
 dev = [
     "boto3",
     "black",
-    "boto3-stubs[dynamodb]",
+    "boto3-stubs[dynamodb,bedrock-runtime]",
     "bumpver",
     "diskcache",
     "humanize",
