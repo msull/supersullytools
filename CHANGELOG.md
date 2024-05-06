@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] 2024-05-06
+
+* Added a new LLM completion helper tool, which more or less replaces the openai.chat_session functionality.
+
 ## [2.2.0] 2024-03-21
 
 ### Added
@@ -23,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-* All depedencies moved to optional dev section; user must handle installing packages they want for the features they
+* All dependencies moved to optional dev section; user must handle installing packages they want for the features they
   would like to use.
 
 ## [1.0.0] 2023-11-30
