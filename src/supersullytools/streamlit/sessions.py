@@ -131,7 +131,9 @@ class SessionManagerInterface(ABC, Generic[SessionType]):
         self.persist_session(session)
         return session
 
-    def init_session(self, expiration: Optional[datetime | timedelta] = None) -> SessionType:
+    def init_session(
+        self, expiration: Optional[datetime | timedelta] = None, auto_extend_session_expiration=False
+    ) -> SessionType:
         datakey = self.get_session_model().__name__
         query_session = st.query_params.get(self.get_query_param_name())
         if query_session:
@@ -172,11 +174,20 @@ class SessionManagerInterface(ABC, Generic[SessionType]):
 
         session: StreamlitSessionBase
 
-        if session and session.is_expired:
+        if session.is_expired:
             self.logger.info("Session is expired; clearing and starting new")
             self.clear_session_data()
-            return self.init_session(expiration=expiration)
-
+            session = self.init_session(expiration=expiration)
+        else:
+            if expiration and auto_extend_session_expiration:
+                match expiration:
+                    case datetime():
+                        expires_at = expiration.timestamp()
+                    case timedelta():
+                        expires_at = (datetime.utcnow() + expiration).timestamp()
+                    case _:
+                        raise ValueError("Invalid type for expiration")
+                session.expires_at = expires_at
         session.save_to_session_state()
         return session
 
