@@ -168,6 +168,7 @@ class SessionManagerInterface(ABC, Generic[SessionType]):
                         expires_at = (datetime.utcnow() + expiration).timestamp()
                     case _:
                         raise ValueError("Invalid type for expiration")
+                expires_at = Decimal(str(expires_at).split(".")[0])
                 session = self.get_session_model()(expires_at=expires_at)
             else:
                 session = self.get_session_model()()
@@ -187,6 +188,7 @@ class SessionManagerInterface(ABC, Generic[SessionType]):
                         expires_at = (datetime.utcnow() + expiration).timestamp()
                     case _:
                         raise ValueError("Invalid type for expiration")
+                expires_at = Decimal(str(expires_at).split(".")[0])
                 session.expires_at = expires_at
         session.save_to_session_state()
         return session
