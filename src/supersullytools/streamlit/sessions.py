@@ -48,6 +48,16 @@ class StreamlitSessionBase(BaseModel):
         else:
             return ""
 
+    @property
+    def is_expired(self) -> bool:
+        if self.expires_at:
+            now = datetime.utcnow()
+            expiration = datetime.fromtimestamp(float(self.expires_at))
+            time_remaining = expiration - now
+            return time_remaining.total_seconds() < 0
+        else:
+            return False
+
     def __setattr__(self, name, value):
         super().__setattr__(name, value)
         self.save_to_session_state()
@@ -159,6 +169,13 @@ class SessionManagerInterface(ABC, Generic[SessionType]):
                 session = self.get_session_model()(expires_at=expires_at)
             else:
                 session = self.get_session_model()()
+
+        session: StreamlitSessionBase
+
+        if session and session.is_expired:
+            self.logger.info("Session is expired; clearing and starting new")
+            self.clear_session_data()
+            return self.init_session(expiration=expiration)
 
         session.save_to_session_state()
         return session
