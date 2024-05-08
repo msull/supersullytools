@@ -89,11 +89,35 @@ class CompletionHandler:
         openai_client: Optional["Client"] = None,
         bedrock_runtime_client: Optional["BedrockRuntimeClient"] = None,
         available_models: Optional[list["CompletionModel"]] = None,
+        debug_output_prompt_and_response=False,
+        enable_openai=True,
+        enable_bedrock=True,
     ):
         self.logger = logger
-        self.openai_client = openai_client or openai.Client()
-        self.bedrock_runtime_client = bedrock_runtime_client or boto3.client("bedrock-runtime")
-        self.available_models = available_models or ALL_MODELS
+        self.enable_openai = enable_openai
+        self.enable_bedrock = enable_bedrock
+
+        self.openai_client = None
+        if self.enable_openai:
+            self.openai_client = openai_client or openai.Client()
+
+        self.bedrock_runtime_client = None
+        if self.enable_bedrock:
+            self.bedrock_runtime_client = bedrock_runtime_client or boto3.client("bedrock-runtime")
+
+        self.debug_output_prompt_and_response = debug_output_prompt_and_response
+        if available_models:
+            self.available_models = available_models
+        else:
+            if enable_bedrock and enable_openai:
+                self.available_models = ALL_MODELS
+            elif enable_bedrock:
+                self.available_models = [x for x in ALL_MODELS if isinstance(x, BedrockModel)]
+            elif enable_openai:
+                self.available_models = [x for x in ALL_MODELS if isinstance(x, OpenAiModel)]
+            else:
+                # what do?
+                raise ValueError("No models specified")
 
     def get_model_by_name_or_id(self, model_name_or_id: str) -> "CompletionModelType":
         try:
@@ -124,13 +148,17 @@ class CompletionHandler:
     def _get_bedrock_completion(
         self, llm: BedrockModel, prompt: str | list[PromptMessage | ImagePromptMessage], max_response_tokens: int
     ) -> "CompletionResponse":
+        if not self.enable_bedrock:
+            raise RuntimeError("Bedrock completions disabled!")
         boto_input = llm.prepare_bedrock_body(prompt, max_response_tokens)
         body = json.dumps(boto_input)
+
         accept = "application/json"
         content_type = "application/json"
 
         self.logger.info(f"Generating Bedrock Completion {llm.llm_id}")
-        # self.logger.debug(boto_input)
+        if self.debug_output_prompt_and_response:
+            self.logger.debug(f"LLM input:\n{boto_input}")
 
         # Invoke Bedrock API
         started_at = datetime.now(timezone.utc)
@@ -138,8 +166,10 @@ class CompletionHandler:
             body=body, modelId=llm.llm_id, accept=accept, contentType=content_type
         )
         finished_at = datetime.now(timezone.utc)
-        self.logger.info("Completion complete")
-        # self.logger.debug(response)
+        self.logger.info("Generation complete")
+        if self.debug_output_prompt_and_response:
+            self.logger.debug(f"LLM Response:\n{response}")
+
         parsed_response = llm.parse_bedrock_response(response)
 
         return CompletionResponse(
@@ -154,6 +184,8 @@ class CompletionHandler:
     def _get_openai_completion(
         self, llm: OpenAiModel, prompt: str | list[PromptMessage | ImagePromptMessage], max_response_tokens: int
     ) -> "CompletionResponse":
+        if not self.enable_openai:
+            raise RuntimeError("OpenAI completions disabled!")
         is_image_prompt = False
         if isinstance(prompt, str):
             chat_history = [{"role": "user", "content": prompt}]
@@ -190,6 +222,8 @@ class CompletionHandler:
             if not llm.supports_images:
                 raise ValueError("Specified model does not have image prompt support")
             self.logger.info("Generating Open AI ChatCompletion with Images")
+            if self.debug_output_prompt_and_response:
+                self.logger.debug(f"LLM input:\n{chat_history}")
             # have to use requests for this one
             headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.openai_client.api_key}"}
 
@@ -199,14 +233,18 @@ class CompletionHandler:
             )
             raw_response.raise_for_status()
             data = raw_response.json()
-            # self.logger.debug(data)
+            if self.debug_output_prompt_and_response:
+                self.logger.debug(f"LLM response:\n{data}")
             openai_response = OpenAiChatCompletion.model_validate(data)
         else:
             self.logger.info("Generating Open AI ChatCompletion")
+            if self.debug_output_prompt_and_response:
+                self.logger.debug(f"LLM input:\n{chat_history}")
             openai_response = self.openai_client.chat.completions.create(
                 model=llm.llm_id, messages=chat_history, max_tokens=max_response_tokens
             )
-            # self.logger.debug(openai_response)
+            if self.debug_output_prompt_and_response:
+                self.logger.debug(f"LLM response:\n{openai_response}")
         finished_at = datetime.now(timezone.utc)
 
         return CompletionResponse(
