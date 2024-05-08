@@ -165,6 +165,8 @@ class CompletionHandler:
         response = self.bedrock_runtime_client.invoke_model(
             body=body, modelId=llm.llm_id, accept=accept, contentType=content_type
         )
+        response_body = response.get("body").read()
+        response["body"] = response_body
         finished_at = datetime.now(timezone.utc)
         self.logger.info("Generation complete")
         if self.debug_output_prompt_and_response:
@@ -308,7 +310,7 @@ class Llama2Chat13B(BedrockModel):
         }
 
     def parse_bedrock_response(self, response: dict) -> BedrockCompletionResponse:
-        response_body = json.loads(response.get("body").read())
+        response_body = json.loads(response["body"])
         return BedrockCompletionResponse(
             content=response_body["generation"],
             input_tokens=response_body["prompt_token_count"],
@@ -375,7 +377,7 @@ class Claude3Sonnet(BedrockModel):
         }
 
     def parse_bedrock_response(self, response: dict) -> BedrockCompletionResponse:
-        response_body = json.loads(response.get("body").read())
+        response_body = json.loads(response["body"])
         content = response_body["content"][0]["text"].strip()
         response_headers = response["ResponseMetadata"]["HTTPHeaders"]
         return BedrockCompletionResponse(
@@ -414,7 +416,7 @@ class Mistral7B(BedrockModel):
         }
 
     def parse_bedrock_response(self, response: dict) -> BedrockCompletionResponse:
-        response_body = json.loads(response.get("body").read())
+        response_body = json.loads(response["body"])
         content = response_body["outputs"][0]["text"].strip()
         response_headers = response["ResponseMetadata"]["HTTPHeaders"]
         return BedrockCompletionResponse(
