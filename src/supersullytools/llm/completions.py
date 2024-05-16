@@ -259,30 +259,30 @@ class CompletionHandler:
         )
 
 
-class Gpt3p5Turbo0125(OpenAiModel):
+class Gpt3p5Turbo(OpenAiModel):
     make: str = "OpenAI"
     llm: str = "GPT 3.5 Turbo"
-    llm_id: str = "gpt-3.5-turbo-0125"
+    llm_id: str = "gpt-3.5-turbo"
     input_price_per_1k: float = 0.000500
     output_price_per_1k: float = 0.001500
     supports_images: bool = False
 
 
-class Gpt4Turbo0125Preview(Gpt3p5Turbo0125):
+class Gpt4Turbo(Gpt3p5Turbo):
     make: str = "OpenAI"
     llm: str = "GPT 4 Turbo"
-    llm_id: str = "gpt-4-0125-preview"
+    llm_id: str = "gpt-4-turbo"
     input_price_per_1k: float = 0.010000
     output_price_per_1k: float = 0.030000
-    supports_images: bool = False
+    supports_images: bool = True
 
 
-class Gpt4VisionPreview(Gpt3p5Turbo0125):
+class Gpt4Omni(Gpt3p5Turbo):
     make: str = "OpenAI"
-    llm: str = "GPT 4 Vision Preview"
-    llm_id: str = "gpt-4-vision-preview"
-    input_price_per_1k: float = 0.010000
-    output_price_per_1k: float = 0.030000
+    llm: str = "GPT 4 Omni"
+    llm_id: str = "gpt-4o"
+    input_price_per_1k: float = 0.005
+    output_price_per_1k: float = 0.015
     supports_images: bool = True
 
 
@@ -396,6 +396,15 @@ class Claude3Haiku(Claude3Sonnet):
     supports_images: bool = True
 
 
+class Claude3Opus(Claude3Sonnet):
+    make: str = "Anthropic"
+    llm: str = "Claude 3 Opus"
+    llm_id: str = "anthropic.claude-3-opus-20240229-v1:0"
+    input_price_per_1k: float = 0.015
+    output_price_per_1k: float = 0.075
+    supports_images: bool = True
+
+
 class Mistral7B(BedrockModel):
     make: str = "Mistral AI"
     llm: str = "Mistral 7B Instruct"
@@ -436,13 +445,14 @@ class Mixtral8x7B(Mistral7B):
 
 
 ALL_MODELS = [
-    Gpt3p5Turbo0125(),
-    Gpt4Turbo0125Preview(),
-    Gpt4VisionPreview(),
+    Gpt3p5Turbo(),
+    Gpt4Omni(),
+    Gpt4Turbo(),
     Llama2Chat13B(),
     Llama2Chat70B(),
     Mistral7B(),
     Mixtral8x7B(),
     Claude3Haiku(),
     Claude3Sonnet(),
+    Claude3Opus(),
 ]
