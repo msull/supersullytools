@@ -327,6 +327,24 @@ class Llama2Chat70B(Llama2Chat13B):
     supports_images: bool = False
 
 
+class Llama3Instruct8B(Llama2Chat13B):
+    make: str = "Meta"
+    llm: str = "Llama 3 Instruct 8B"
+    llm_id: str = "meta.llama3-8b-instruct-v1:0"
+    input_price_per_1k: float = 0.0004
+    output_price_per_1k: float = 0.0006
+    supports_images: bool = False
+
+
+class Llama3Instruct70B(Llama2Chat13B):
+    make: str = "Meta"
+    llm: str = "Llama 3 Instruct 70B"
+    llm_id: str = "meta.llama3-70b-instruct-v1:0"
+    input_price_per_1k: float = 0.00265
+    output_price_per_1k: float = 0.0035
+    supports_images: bool = False
+
+
 class Claude3Sonnet(BedrockModel):
     make: str = "Anthropic"
     llm: str = "Claude 3 Sonnet"
@@ -363,7 +381,7 @@ class Claude3Sonnet(BedrockModel):
                             )
                         chat_history.append(
                             {
-                                "role": msg.role,
+                                "role": msg_role,
                                 "content": content,
                             }
                         )
