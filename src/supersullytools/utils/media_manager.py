@@ -1,3 +1,65 @@
+"""
+media_manager.py
+
+This module written primarily by Chat GPT:
+
+https://chatgpt.com/share/f13a0787-4514-444c-95e3-be2daca4b042
+
+This module provides functionality for managing media files stored in an Amazon S3 bucket,
+with metadata stored in Amazon DynamoDB. It includes features for uploading, retrieving,
+generating previews, and deleting media files, with optional gzip compression support for
+efficient storage of compressible data like CSV and JSON files.
+
+Classes:
+    MediaType: An enumeration of supported media types.
+    StoredMedia: A Pydantic model representing the metadata for a stored media file.
+    MediaManager: A class responsible for managing media files and their metadata.
+
+Functions:
+    resize_image(image: Image, max_size: (int, int) = (200, 200)) -> Image:
+        Resizes an image to fit within the specified maximum dimensions while maintaining the aspect ratio.
+
+    generate_image_thumbnail(file_obj: IOBase, size: (int, int) = (200, 200)) -> bytes:
+        Generates a thumbnail image from the provided image file object.
+
+    generate_audio_waveform(file_obj: IOBase) -> bytes:
+        Generates a waveform image from the provided audio file object.
+
+    generate_pdf_preview(file_obj: IOBase) -> bytes:
+        Generates a preview image from the first page of the provided PDF file object.
+
+    generate_video_thumbnail(file_obj: IOBase) -> bytes:
+        Generates a thumbnail image from the provided video file object using ffmpeg.
+
+    generate_no_preview_available() -> bytes:
+        Generates a "No Preview Available" image for unsupported media types or when preview generation fails.
+
+Dependencies:
+    - boto3: For interacting with Amazon S3.
+    - gzip: For gzip compression and decompression.
+    - matplotlib: For generating audio waveform images.
+    - PIL (Pillow): For image processing.
+    - pydantic: For data validation and settings management.
+    - simplesingletable: For interacting with DynamoDB.
+    - smart_open: For reading and writing files from/to S3.
+    - pydub: For audio file manipulation (optional).
+    - pypdfium2: For PDF file manipulation (optional).
+
+Usage:
+    # Initialize the MediaManager
+    media_manager = MediaManager(bucket_name='your-bucket-name', logger=your_logger, dynamodb_memory=your_dynamodb_memory)
+
+    # Upload a new media file
+    with open('path/to/your/file.jpg', 'rb') as file_obj:
+        media_manager.upload_new_media('file.jpg', MediaType.image, file_obj)
+
+    # Retrieve a media file's metadata and contents
+    metadata, contents = media_manager.retrieve_media_metadata_and_contents('media_id')
+
+    # Delete a media file
+    media_manager.delete_media('media_id')
+"""
+
 import gzip
 import os
 import subprocess
@@ -52,7 +114,44 @@ class StoredMedia(DynamoDbResource):
 
 
 class MediaManager:
-    VALID_MEDIA_TYPES = ["image", "video", "audio", "document", "html"]
+    """
+    MediaManager is responsible for handling the upload, retrieval, preview generation,
+    and deletion of media files stored in an S3 bucket, with metadata stored in DynamoDB.
+    It supports optional gzip compression for efficient storage of highly compressible data.
+
+    Attributes:
+        bucket_name (str): The name of the S3 bucket where media files are stored.
+        logger (logging.Logger): Logger instance for logging information and errors.
+        dynamodb_memory (DynamoDbMemory): Instance for interacting with DynamoDB to store and retrieve metadata.
+        global_prefix (str): A prefix that is pre-pended to the file IDs when reading/writing to S3.
+
+    Methods:
+        generate_preview(file_obj: IOBase, media_type: MediaType) -> bytes:
+            Generates a preview image for the given media file based on its type.
+
+        list_available_media(num: int = 10, oldest_first: bool = True, pagination_key: Optional[str] = None):
+            Lists available media in DynamoDB, optionally paginated and sorted.
+
+        upload_new_media(source_file_name: str, media_type: MediaType, file_obj: IOBase, use_gzip: bool = False) -> StoredMedia:
+            Uploads a new media file to S3, generates a preview, and stores metadata in DynamoDB.
+            Supports optional gzip compression.
+
+        delete_media(media_id: str) -> None:
+            Deletes a media file and its preview from S3 and removes the associated metadata from DynamoDB.
+            Handles idempotent deletion by checking for the existence of files before attempting to delete them.
+
+        retrieve_metadata(media_id: str) -> StoredMedia:
+            Retrieves the metadata for a given media ID from DynamoDB.
+
+        retrieve_media_metadata_and_contents(media_id: str) -> tuple[StoredMedia, IO[bytes]]:
+            Retrieves both the metadata and the content of a media file from S3 and DynamoDB.
+
+        retrieve_media_contents(media_id: str) -> IO[bytes]:
+            Retrieves the content of a media file from S3. Automatically decompresses the content if it was stored using gzip.
+
+        retrieve_media_preview(media_id: str) -> bytes:
+            Retrieves the preview image of a media file from S3.
+    """
 
     def __init__(self, bucket_name: str, logger, dynamodb_memory, global_prefix: str = ""):
         self.bucket_name = bucket_name

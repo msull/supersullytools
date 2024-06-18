@@ -1,3 +1,56 @@
+"""
+streamlit_media_manager.py
+
+This Streamlit app provides a demo interface for managing media files stored in an Amazon S3 bucket,
+with metadata stored in Amazon DynamoDB. It includes features for uploading, retrieving, generating
+previews, and deleting media files, with optional gzip compression support for efficient storage of
+compressible data like CSV and JSON files.
+
+Functions:
+    setup_media_manager() -> MediaManager:
+        Sets up and returns a MediaManager instance for managing media files.
+
+    detect_media_type(file_name: str) -> Optional[MediaType]:
+        Detects the media type of a file based on its MIME type.
+
+    display_content(contents, media_type: MediaType):
+        Displays the content in the Streamlit app based on the media type.
+
+    upload_media_dialog():
+        Handles the file upload process, including optional gzip compression, and generates previews.
+
+    get_preview_image_base64(media_id: str) -> str:
+        Retrieves the preview image for a given media ID and encodes it in base64 format.
+
+Streamlit Sections:
+    - Upload Media: Allows users to upload media files with optional gzip compression and preview generation.
+    - Recent Uploads: Displays a table of recent uploads with preview images and options to delete selected files.
+    - Retrieve Metadata: Retrieves and displays the metadata for a specified media ID.
+    - Retrieve Content: Retrieves and displays the content of a specified media ID, with a download option.
+    - Retrieve Preview: Retrieves and displays the preview of a specified media ID.
+    - Delete Media: Deletes the specified media file and its metadata from S3 and DynamoDB.
+
+Dependencies:
+    - base64: For encoding preview images in base64 format.
+    - mimetypes: For detecting MIME types of files.
+    - os: For accessing environment variables.
+    - pandas: For creating and manipulating DataFrames.
+    - streamlit: For building the web app interface.
+    - logzero: For logging information and errors.
+    - simplesingletable: For interacting with DynamoDB.
+    - supersullytools.utils.media_manager: For managing media files and their metadata.
+
+Usage:
+    1. Set up the required environment variables:
+        - DYNAMODB_TABLE: The name of the DynamoDB table.
+        - S3_BUCKET: The name of the S3 bucket.
+
+    2. Run the Streamlit app:
+        streamlit run streamlit_media_manager.py
+
+    3. Use the app interface to upload, view, retrieve, and delete media files.
+"""
+
 import base64
 import mimetypes
 import os
