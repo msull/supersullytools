@@ -58,43 +58,54 @@ media_manager = setup_media_manager()
 
 st.title("Media Manager Streamlit App")
 
-# File upload section
-st.header("Upload Media")
-uploaded_file = st.file_uploader(
-    "Choose a file",
-)
 
-default_media_type = None
-if uploaded_file:
-    media_types = list(MediaType)
-    st.write(mimetypes.guess_type(uploaded_file.name)[0])
-    try:
-        default_media_type = media_types.index(detect_media_type(uploaded_file.name))
-    except ValueError:
-        pass
+@st.experimental_dialog("Upload Media", width="large")
+def upload_media_dialog():
+    # File upload section
+    st.header("Upload Media")
+    uploaded_file = st.file_uploader(
+        "Choose a file",
+    )
 
-media_type: MediaType = st.selectbox(
-    "Select media type", options=list(MediaType), index=default_media_type, format_func=lambda x: x.value
-)
-
-if uploaded_file is not None and media_type:
-    st.write("Filename:", uploaded_file.name)
-    bytes_data = uploaded_file.read()
-    file_obj = BytesIO(bytes_data)
-
-    try:
-        preview = media_manager.generate_preview(uploaded_file, media_type)
-        st.image(preview, media_type)
-    except Exception as e:
-        st.error(f"Failed to generate preview for file: {str(e)}")
-    if st.button("Upload"):
+    default_media_type = None
+    if uploaded_file:
+        media_types = list(MediaType)
+        st.write(mimetypes.guess_type(uploaded_file.name)[0])
         try:
-            metadata = media_manager.upload_new_media(uploaded_file.name, media_type, file_obj)
-            st.success(f"File uploaded successfully! Media ID: {metadata.resource_id}")
+            default_media_type = media_types.index(detect_media_type(uploaded_file.name))
+        except ValueError:
+            pass
+
+    media_type: MediaType = st.selectbox(
+        "Select media type", options=list(MediaType), index=default_media_type, format_func=lambda x: x.value
+    )
+
+    if uploaded_file is not None and media_type:
+        st.write("Filename:", uploaded_file.name)
+        bytes_data = uploaded_file.read()
+        file_obj = BytesIO(bytes_data)
+        gzip_content = st.toggle("Gzip content before storage")
+        try:
+            preview = media_manager.generate_preview(uploaded_file, media_type)
+            st.image(preview, media_type)
         except Exception as e:
-            st.error(f"Failed to upload file: {str(e)}")
+            st.error(f"Failed to generate preview for file: {str(e)}")
+
+        if st.button("Upload"):
+            try:
+                metadata = media_manager.upload_new_media(
+                    uploaded_file.name, media_type, file_obj, use_gzip=gzip_content
+                )
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"Failed to upload file: {str(e)}")
+            else:
+                return metadata
 
 
+if st.button("Upload Media"):
+    upload_media_dialog()
 st.header("Recent Uploads")
 
 data = []
@@ -120,8 +131,9 @@ df = pd.DataFrame(data)
 # Add a column for the preview images
 df["Preview"] = [f"data:image/jpeg;base64,{preview}" for preview in previews]
 
+
 # Display the DataFrame with custom column configuration
-st.dataframe(
+selected = st.dataframe(
     df,
     column_config={
         "Preview": st.column_config.ImageColumn(
@@ -131,8 +143,18 @@ st.dataframe(
         ),
     },
     use_container_width=True,
+    on_select="rerun",
+    selection_mode="multi-row",
 )
-
+if work_on_rows := selected["selection"]["rows"]:
+    selected_media_ids = [df.iloc[x]["resource_id"] for x in work_on_rows]
+    if st.button("Delete selected", type="primary"):
+        for delete_media_id in selected_media_ids:
+            try:
+                preview_metadata = media_manager.delete_media(delete_media_id)
+                st.info(f"Deleted {delete_media_id}")
+            except Exception as e:
+                st.error(f"Failed to delete media: {str(e)}")
 
 # Retrieve metadata section
 st.header("Retrieve Metadata")

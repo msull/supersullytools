@@ -1,3 +1,4 @@
+import gzip
 import os
 import subprocess
 import tempfile
@@ -31,6 +32,7 @@ class StoredMedia(DynamoDbResource):
     media_type: MediaType
     file_size_bytes: int = None
     preview_size_bytes: int = None
+    content_gzipped: bool = False
 
     model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
 
@@ -82,33 +84,42 @@ class MediaManager:
             StoredMedia, ascending=oldest_first, pagination_key=pagination_key, results_limit=num
         )
 
-    def upload_new_media(self, source_file_name: str, media_type: MediaType, file_obj: IOBase) -> StoredMedia:
+    def upload_new_media(
+        self, source_file_name: str, media_type: MediaType, file_obj: IOBase, use_gzip: bool = False
+    ) -> StoredMedia:
         try:
             media_type = MediaType[media_type]
         except KeyError:
             raise ValueError(f"Invalid media type: {media_type}. Valid types are: {', '.join(list(MediaType))}")
 
         upload_id = date_id()
-
         prefixed_file_name = "/".join([self.global_prefix, upload_id]).replace("//", "/")
         s3_uri = f"s3://{self.bucket_name}/{prefixed_file_name}"
 
         try:
-            file_obj.seek(0, 2)  # Move to the end of the file to get its size
-            file_size_bytes = file_obj.tell()
-            file_obj.seek(0)  # Reset the file pointer to the beginning
+            if use_gzip:
+                compressed_io = BytesIO()
+                with gzip.GzipFile(fileobj=compressed_io, mode="wb") as gz:
+                    gz.write(file_obj.read())
+                compressed_io.seek(0)
+                write_obj = compressed_io
+            else:
+                write_obj = file_obj
+
+            write_obj.seek(0, 2)  # Move to the end of the file to get its size
+            file_size_bytes = write_obj.tell()
+            write_obj.seek(0)  # Reset the file pointer to the beginning
 
             with open(s3_uri, "wb") as s3_file:
-                s3_file.write(file_obj.read())
+                s3_file.write(write_obj.read())
 
             self.logger.info(f"Successfully uploaded {source_file_name} to {s3_uri}")
-
             # Generate and upload preview
             file_obj.seek(0)
             preview_data = self.generate_preview(file_obj, media_type)
             preview_io = BytesIO(preview_data)
             preview_io.seek(0, 2)  # Move to the end of the file to get its size
-            preview_size_bytes = file_obj.tell()
+            preview_size_bytes = preview_io.tell()
             preview_io.seek(0)  # Reset the file pointer to the beginning
 
             preview_s3_uri = f"{s3_uri}_preview"
@@ -125,6 +136,7 @@ class MediaManager:
                     "media_type": media_type,
                     "file_size_bytes": file_size_bytes,
                     "preview_size_bytes": preview_size_bytes,
+                    "content_gzipped": use_gzip,
                 },
                 override_id=upload_id,
             )
@@ -193,15 +205,24 @@ class MediaManager:
             raise
 
     def retrieve_media_contents(self, media_id: str) -> IO[bytes]:
+        metadata = self.retrieve_metadata(media_id)
         prefixed_file_name = "/".join([self.global_prefix, media_id]).replace("//", "/")
         s3_uri = f"s3://{self.bucket_name}/{prefixed_file_name}"
-        self.dynamodb_memory.delete_existing()
 
         try:
             with open(s3_uri, "rb") as s3_file:
                 contents = s3_file.read()
+
             self.logger.info(f"Successfully retrieved contents for media ID {media_id}")
-            return contents
+
+            if metadata.content_gzipped:
+                decompressed_io = BytesIO()
+                with gzip.GzipFile(fileobj=BytesIO(contents), mode="rb") as gz:
+                    decompressed_io.write(gz.read())
+                decompressed_io.seek(0)
+                return decompressed_io
+            else:
+                return BytesIO(contents)
         except Exception as e:
             self.logger.exception(f"Failed to retrieve contents for media ID {media_id}: {str(e)}")
             raise
