@@ -104,7 +104,7 @@ def halt_dynamodb_local(c: Context):
 @task
 def run_streamlit_app(c: Context):
     with from_repo_root(c):
-        c.run("streamlit run ./src/streamlit_app/Home.py --server.headless True", pty=True)
+        c.run("streamlit run ./src/streamlit_app/Home.py --server.headless True --server.maxUploadSize 1000", pty=True)
 
 
 @task

@@ -381,7 +381,7 @@ class Claude3Sonnet(BedrockModel):
                             )
                         chat_history.append(
                             {
-                                "role": msg_role,
+                                "role": msg.role,
                                 "content": content,
                             }
                         )
