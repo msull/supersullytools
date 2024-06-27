@@ -44,6 +44,7 @@ Usage:
     1. Set up the required environment variables:
         - DYNAMODB_TABLE: The name of the DynamoDB table.
         - S3_BUCKET: The name of the S3 bucket.
+        - (optional) S3_MEDIA_PREFIX: A prefix within the bucket to use
 
     2. Run the Streamlit app:
         streamlit run streamlit_media_manager.py
@@ -75,7 +76,7 @@ def setup_media_manager():
         bucket_name=os.environ.get("S3_BUCKET"),
         logger=logger,
         dynamodb_memory=dynamodb_memory,
-        global_prefix="media-manager-testing",
+        global_prefix=os.environ.get("S3_MEDIA_PREFIX") or "media-manager-testing",
     )
 
 
