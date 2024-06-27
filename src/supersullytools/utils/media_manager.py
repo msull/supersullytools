@@ -7,8 +7,8 @@ https://chatgpt.com/share/f13a0787-4514-444c-95e3-be2daca4b042
 
 This module provides functionality for managing media files stored in an Amazon S3 bucket,
 with metadata stored in Amazon DynamoDB. It includes features for uploading, retrieving,
-generating previews, and deleting media files, with optional gzip compression support for
-efficient storage of compressible data like CSV and JSON files.
+generating previews, and deleting media files, with optional gzip compression and encryption
+support for efficient and secure storage of compressible data like CSV and JSON files.
 
 Classes:
     MediaType: An enumeration of supported media types.
@@ -44,6 +44,7 @@ Dependencies:
     - smart_open: For reading and writing files from/to S3.
     - pydub: For audio file manipulation (optional).
     - pypdfium2: For PDF file manipulation (optional).
+    - cryptography: For encryption and decryption of media files (optional).
 
 Usage:
     # Initialize the MediaManager
@@ -58,6 +59,28 @@ Usage:
 
     # Delete a media file
     media_manager.delete_media('media_id')
+
+Encryption:
+    To use encryption features, the `cryptography` library must be installed. You can generate a Fernet key
+    and use it for encryption and decryption as shown below:
+
+    # Generate a Fernet key
+    from cryptography.fernet import Fernet
+    encryption_key = Fernet.generate_key()
+
+    # Initialize the MediaManager with encryption
+    media_manager = MediaManager(bucket_name='your-bucket-name', logger=your_logger, dynamodb_memory=your_dynamodb_memory)
+
+    # Upload a new media file with encryption
+    with open('path/to/your/file.jpg', 'rb') as file_obj:
+        media_manager.upload_new_media('file.jpg', MediaType.image, file_obj, encryption_key=encryption_key)
+
+    # Retrieve and decrypt a media file's contents
+    metadata, contents = media_manager.retrieve_media_metadata_and_contents('media_id', encryption_key=encryption_key)
+
+Conditional Import:
+    The cryptography library is imported conditionally. If the library is not available, an ImportError will be
+    raised when attempting to use encryption or decryption features.
 """
 
 import gzip
@@ -78,6 +101,13 @@ from smart_open import open
 
 from supersullytools.utils.misc import date_id
 
+try:
+    from cryptography.fernet import Fernet
+
+    CRYPTOGRAPHY_AVAILABLE = True
+except ImportError:
+    CRYPTOGRAPHY_AVAILABLE = False
+
 
 class MediaType(str, Enum):
     pdf = "pdf"
@@ -92,9 +122,15 @@ class MediaType(str, Enum):
 class StoredMedia(DynamoDbResource):
     src_filename: Optional[str] = None
     media_type: MediaType
-    file_size_bytes: int = None
-    preview_size_bytes: int = None
+    file_size_bytes: int = None  # raw size of uploaded media file
+    storage_size_bytes: int = None  # size of the file being sent to storage (possibly compressed / encrypted)
+    preview_size_bytes: int = None  # raw size of the preview file
+    preview_storage_size_bytes: int = (
+        None  # size of the preview being sent to storage (possibly compressed / encrypted)
+    )
     content_gzipped: bool = False
+    content_encrypted: bool = False
+    preview_encrypted: bool = False
 
     model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
 
@@ -107,9 +143,23 @@ class StoredMedia(DynamoDbResource):
 
     @computed_field
     @property
+    def storage_size(self) -> str:
+        if self.storage_size_bytes:
+            return naturalsize(self.storage_size_bytes)
+        return ""
+
+    @computed_field
+    @property
     def preview_size(self) -> str:
         if self.preview_size_bytes:
             return naturalsize(self.preview_size_bytes)
+        return ""
+
+    @computed_field
+    @property
+    def preview_storage_size(self) -> str:
+        if self.preview_storage_size_bytes:
+            return naturalsize(self.preview_storage_size_bytes)
         return ""
 
 
@@ -183,8 +233,40 @@ class MediaManager:
             StoredMedia, ascending=oldest_first, pagination_key=pagination_key, results_limit=num
         )
 
+    @staticmethod
+    def _encrypt_contents(file_obj: IOBase, encryption_key: str) -> IOBase:
+        if not CRYPTOGRAPHY_AVAILABLE:
+            raise ImportError("cryptography library is not available. Install it to use encryption features.")
+
+        fernet = Fernet(encryption_key)
+        file_obj.seek(0)
+        data = file_obj.read()
+        encrypted_data = fernet.encrypt(data)
+        encrypted_io = BytesIO(encrypted_data)
+        encrypted_io.seek(0)
+        return encrypted_io
+
+    @staticmethod
+    def _decrypt_contents(file_obj: IOBase, encryption_key: str) -> IOBase:
+        if not CRYPTOGRAPHY_AVAILABLE:
+            raise ImportError("cryptography library is not available. Install it to use decryption features.")
+
+        fernet = Fernet(encryption_key)
+        file_obj.seek(0)
+        encrypted_data = file_obj.read()
+        decrypted_data = fernet.decrypt(encrypted_data)
+        decrypted_io = BytesIO(decrypted_data)
+        decrypted_io.seek(0)
+        return decrypted_io
+
     def upload_new_media(
-        self, source_file_name: str, media_type: MediaType, file_obj: IOBase, use_gzip: bool = False
+        self,
+        source_file_name: str,
+        media_type: MediaType,
+        file_obj: IOBase,
+        use_gzip: bool = False,
+        encryption_key: Optional[str] = None,
+        encrypt_preview: bool = True,
     ) -> StoredMedia:
         try:
             media_type = MediaType[media_type]
@@ -196,6 +278,9 @@ class MediaManager:
         s3_uri = f"s3://{self.bucket_name}/{prefixed_file_name}"
 
         try:
+            file_obj.seek(0, 2)  # Move to the end of the file to get its size
+            raw_file_size_bytes = file_obj.tell()
+            file_obj.seek(0)  # Reset the file pointer to the beginning
             if use_gzip:
                 compressed_io = BytesIO()
                 with gzip.GzipFile(fileobj=compressed_io, mode="wb") as gz:
@@ -204,6 +289,11 @@ class MediaManager:
                 write_obj = compressed_io
             else:
                 write_obj = file_obj
+
+            encrypted = False
+            if encryption_key:
+                encrypted = True
+                write_obj = self._encrypt_contents(write_obj, encryption_key)
 
             write_obj.seek(0, 2)  # Move to the end of the file to get its size
             file_size_bytes = write_obj.tell()
@@ -215,15 +305,23 @@ class MediaManager:
             self.logger.info(f"Successfully uploaded {source_file_name} to {s3_uri}")
             # Generate and upload preview
             file_obj.seek(0)
-            preview_data = self.generate_preview(file_obj, media_type)
-            preview_io = BytesIO(preview_data)
+            preview_io = BytesIO(self.generate_preview(file_obj, media_type))
             preview_io.seek(0, 2)  # Move to the end of the file to get its size
-            preview_size_bytes = preview_io.tell()
+            raw_preview_size_bytes = preview_io.tell()
+            preview_io.seek(0)  # Reset the file pointer to the beginning
+
+            preview_encrypted = False
+            if encryption_key and encrypt_preview:
+                preview_encrypted = True
+                preview_io = self._encrypt_contents(preview_io, encryption_key)
+
+            preview_io.seek(0, 2)  # Move to the end of the file to get its size
+            preview_file_size_bytes = preview_io.tell()
             preview_io.seek(0)  # Reset the file pointer to the beginning
 
             preview_s3_uri = f"{s3_uri}_preview"
             with open(preview_s3_uri, "wb") as s3_preview_file:
-                s3_preview_file.write(preview_data)
+                s3_preview_file.write(preview_io.read())
 
             self.logger.info(f"Successfully uploaded preview for {source_file_name} to {preview_s3_uri}")
 
@@ -233,9 +331,13 @@ class MediaManager:
                 {
                     "src_filename": source_file_name,
                     "media_type": media_type,
-                    "file_size_bytes": file_size_bytes,
-                    "preview_size_bytes": preview_size_bytes,
+                    "file_size_bytes": raw_file_size_bytes,
+                    "storage_size_bytes": file_size_bytes,
+                    "preview_size_bytes": raw_preview_size_bytes,
+                    "preview_storage_size_bytes": preview_file_size_bytes,
                     "content_gzipped": use_gzip,
+                    "content_encrypted": encrypted,
+                    "preview_encrypted": preview_encrypted,
                 },
                 override_id=upload_id,
             )
@@ -289,22 +391,17 @@ class MediaManager:
             self.logger.exception(f"Failed to retrieve metadata for media ID {media_id}: {str(e)}")
             raise
 
-    def retrieve_media_metadata_and_contents(self, media_id: str) -> tuple[StoredMedia, IO[bytes]]:
-        metadata = self.retrieve_metadata(media_id)  # ensure exists
-        prefixed_file_name = "/".join([self.global_prefix, media_id]).replace("//", "/")
-        s3_uri = f"s3://{self.bucket_name}/{prefixed_file_name}"
-
-        try:
-            with open(s3_uri, "rb") as s3_file:
-                contents = s3_file.read()
-            self.logger.info(f"Successfully retrieved contents for media ID {media_id}")
-            return metadata, contents
-        except Exception as e:
-            self.logger.exception(f"Failed to retrieve contents for media ID {media_id}: {str(e)}")
-            raise
-
-    def retrieve_media_contents(self, media_id: str) -> IO[bytes]:
+    def retrieve_media_metadata_and_contents(
+        self, media_id: str, encryption_key: Optional[str] = None
+    ) -> tuple[StoredMedia, IO[bytes]]:
         metadata = self.retrieve_metadata(media_id)
+        contents = self.retrieve_media_contents(media_id, encryption_key, metadata=metadata)
+        return metadata, contents
+
+    def retrieve_media_contents(
+        self, media_id: str, encryption_key: Optional[str] = None, metadata: Optional[StoredMedia] = None
+    ) -> IO[bytes]:
+        metadata = metadata or self.retrieve_metadata(media_id)
         prefixed_file_name = "/".join([self.global_prefix, media_id]).replace("//", "/")
         s3_uri = f"s3://{self.bucket_name}/{prefixed_file_name}"
 
@@ -313,20 +410,31 @@ class MediaManager:
                 contents = s3_file.read()
 
             self.logger.info(f"Successfully retrieved contents for media ID {media_id}")
+
+            output_data = BytesIO(contents)
 
             if metadata.content_gzipped:
                 decompressed_io = BytesIO()
                 with gzip.GzipFile(fileobj=BytesIO(contents), mode="rb") as gz:
                     decompressed_io.write(gz.read())
                 decompressed_io.seek(0)
-                return decompressed_io
-            else:
-                return BytesIO(contents)
+                output_data = decompressed_io
+
+            if metadata.content_encrypted:
+                if not encryption_key:
+                    raise ValueError("Content encrypted; must supply encryption key")
+                output_data = self._decrypt_contents(file_obj=output_data, encryption_key=encryption_key)
+
+            return output_data
+
         except Exception as e:
             self.logger.exception(f"Failed to retrieve contents for media ID {media_id}: {str(e)}")
             raise
 
-    def retrieve_media_preview(self, media_id: str):
+    def retrieve_media_preview(self, media_id: str, encryption_key: Optional[str] = None):
+        # note: for speed, we do not pull the metadata and check if the preview is encrypted and
+        # raise an error if the key isn't supplied (which is done when retrieving contents)
+        # if the preview is encrypted and no key is supplied, the preview image will just be busted
         prefixed_file_name = "/".join([self.global_prefix, media_id]).replace("//", "/")
         s3_uri = f"s3://{self.bucket_name}/{prefixed_file_name}_preview"
 
@@ -334,6 +442,8 @@ class MediaManager:
             with open(s3_uri, "rb") as s3_file:
                 contents = s3_file.read()
             self.logger.info(f"Successfully retrieved preview contents for media ID {media_id}")
+            if encryption_key:
+                contents = self._decrypt_contents(file_obj=BytesIO(contents), encryption_key=encryption_key).read()
             return contents
         except Exception as e:
             self.logger.exception(f"Failed to retrieve preview contents for media ID {media_id}: {str(e)}")
@@ -404,7 +514,7 @@ def generate_pdf_preview(file_obj: IOBase) -> bytes:
     pil_image.save(preview_io, format="JPEG")
     preview_io.seek(0)
     image = Image.open(preview_io)
-    image = resize_image(image, max_size=(200, 200))
+    image = resize_image(image, max_size=(300, 300))
 
     resized_io = BytesIO()
     image.save(resized_io, format="PNG")
@@ -457,17 +567,19 @@ def generate_video_thumbnail(file_obj: IOBase) -> bytes:
 
 
 def generate_no_preview_available() -> bytes:
+    return generate_text_image("No Preview Available")
+
+
+def generate_text_image(text: str, width=200, height=200, font_size=10) -> bytes:
     # Generate a "No Preview Available" image
-    width, height = 200, 200
     image = Image.new("RGB", (width, height), color=(255, 255, 255))
     draw = ImageDraw.Draw(image)
-    text = "No Preview Available"
     try:
         # Use a TrueType font if available
-        font = ImageFont.truetype("arial.ttf", 10)
+        font = ImageFont.truetype("arial.ttf", size=font_size)
     except IOError:
         # Otherwise, use the default bitmap font
-        font = ImageFont.load_default()
+        font = ImageFont.load_default(size=font_size)
 
     text_bbox = draw.textbbox((0, 0), text, font=font)
     text_width = text_bbox[2] - text_bbox[0]

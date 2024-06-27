@@ -3,8 +3,8 @@ streamlit_media_manager.py
 
 This Streamlit app provides a demo interface for managing media files stored in an Amazon S3 bucket,
 with metadata stored in Amazon DynamoDB. It includes features for uploading, retrieving, generating
-previews, and deleting media files, with optional gzip compression support for efficient storage of
-compressible data like CSV and JSON files.
+previews, and deleting media files, with optional gzip compression and encryption support for efficient
+and secure storage of compressible data like CSV and JSON files.
 
 Functions:
     setup_media_manager() -> MediaManager:
@@ -17,13 +17,13 @@ Functions:
         Displays the content in the Streamlit app based on the media type.
 
     upload_media_dialog():
-        Handles the file upload process, including optional gzip compression, and generates previews.
+        Handles the file upload process, including optional gzip compression and encryption, and generates previews.
 
     get_preview_image_base64(media_id: str) -> str:
         Retrieves the preview image for a given media ID and encodes it in base64 format.
 
 Streamlit Sections:
-    - Upload Media: Allows users to upload media files with optional gzip compression and preview generation.
+    - Upload Media: Allows users to upload media files with optional gzip compression and encryption, and preview generation.
     - Recent Uploads: Displays a table of recent uploads with preview images and options to delete selected files.
     - Retrieve Metadata: Retrieves and displays the metadata for a specified media ID.
     - Retrieve Content: Retrieves and displays the content of a specified media ID, with a download option.
@@ -39,12 +39,13 @@ Dependencies:
     - logzero: For logging information and errors.
     - simplesingletable: For interacting with DynamoDB.
     - supersullytools.utils.media_manager: For managing media files and their metadata.
+    - cryptography: For generating and using encryption keys (optional).
 
 Usage:
     1. Set up the required environment variables:
         - DYNAMODB_TABLE: The name of the DynamoDB table.
         - S3_BUCKET: The name of the S3 bucket.
-        - (optional) S3_MEDIA_PREFIX: A prefix within the bucket to use
+        - (optional) S3_MEDIA_PREFIX: A prefix within the bucket to use.
 
     2. Run the Streamlit app:
         streamlit run streamlit_media_manager.py
@@ -60,10 +61,11 @@ from typing import Optional
 
 import pandas as pd
 import streamlit as st
+from cryptography.fernet import Fernet
 from logzero import logger
 from simplesingletable import DynamoDbMemory
 
-from supersullytools.utils.media_manager import MediaManager, MediaType
+from supersullytools.utils.media_manager import MediaManager, MediaType, generate_text_image
 
 st.set_page_config(layout="wide")
 
@@ -112,14 +114,21 @@ media_manager = setup_media_manager()
 
 st.title("Media Manager Streamlit App")
 
+# Key generation section
+st.header("Key Generation")
+if st.button("Generate New Fernet Key"):
+    new_key = Fernet.generate_key()
+    st.code(new_key.decode(), language="text")
+
+# Global encryption key
+encryption_key = st.text_input("Global Encryption Key (optional)", type="password", key="global_encryption_key")
+
 
 @st.experimental_dialog("Upload Media", width="large")
 def upload_media_dialog():
     # File upload section
     st.header("Upload Media")
-    uploaded_file = st.file_uploader(
-        "Choose a file",
-    )
+    uploaded_file = st.file_uploader("Choose a file")
 
     default_media_type = None
     if uploaded_file:
@@ -138,7 +147,9 @@ def upload_media_dialog():
         st.write("Filename:", uploaded_file.name)
         bytes_data = uploaded_file.read()
         file_obj = BytesIO(bytes_data)
-        gzip_content = st.toggle("Gzip content before storage")
+        gzip_content = st.checkbox("Gzip content before storage")
+        encrypt_content = st.checkbox("Encrypt content")
+        encrypt_preview = st.checkbox("Encrypt preview")
         try:
             preview = media_manager.generate_preview(uploaded_file, media_type)
             st.image(preview, media_type)
@@ -148,9 +159,14 @@ def upload_media_dialog():
         if st.button("Upload"):
             try:
                 metadata = media_manager.upload_new_media(
-                    uploaded_file.name, media_type, file_obj, use_gzip=gzip_content
+                    uploaded_file.name,
+                    media_type,
+                    file_obj,
+                    use_gzip=gzip_content,
+                    encryption_key=encryption_key if encrypt_content else "",
+                    encrypt_preview=encrypt_preview,
                 )
-                st.rerun()
+                st.experimental_rerun()
 
             except Exception as e:
                 st.error(f"Failed to upload file: {str(e)}")
@@ -160,6 +176,7 @@ def upload_media_dialog():
 
 if st.button("Upload Media"):
     upload_media_dialog()
+
 st.header("Recent Uploads")
 
 data = []
@@ -167,24 +184,39 @@ previews = []
 
 
 @st.cache_data
-def get_preview_image_base64(media_id: str) -> str:
-    preview_content = media_manager.retrieve_media_preview(media_id)
+def get_preview_image_base64(media_id: str, encryption_key: Optional[str] = None) -> str:
+    preview_content = media_manager.retrieve_media_preview(media_id, encryption_key=encryption_key)
     return base64.b64encode(preview_content).decode("utf-8")
 
 
-for media in media_manager.list_available_media(num=25, oldest_first=False):
+for media in media_manager.list_available_media(num=50, oldest_first=False):
+    if media.preview_encrypted:
+        if encryption_key:
+            previews.append(get_preview_image_base64(media.resource_id, encryption_key))
+        else:
+            previews.append(base64.b64encode(generate_text_image("Encryption Key Required")).decode("utf-8"))
+    else:
+        previews.append(get_preview_image_base64(media.resource_id))
+
     media_dict = media.model_dump(
-        mode="json", exclude={"created_at", "updated_at", "file_size_bytes", "preview_size_bytes"}
+        mode="json",
+        exclude={
+            "created_at",
+            "updated_at",
+            "file_size_bytes",
+            "preview_size_bytes",
+            "storage_size_bytes",
+            "preview_storage_size_bytes",
+        },
     )
     data.append(media_dict)
-    previews.append(get_preview_image_base64(media.resource_id))
+
 
 # Convert list of dictionaries to DataFrame
 df = pd.DataFrame(data)
 
 # Add a column for the preview images
 df["Preview"] = [f"data:image/jpeg;base64,{preview}" for preview in previews]
-
 
 # Display the DataFrame with custom column configuration
 selected = st.dataframe(
@@ -200,6 +232,7 @@ selected = st.dataframe(
     on_select="rerun",
     selection_mode="multi-row",
 )
+
 if work_on_rows := selected["selection"]["rows"]:
     selected_media_ids = [df.iloc[x]["resource_id"] for x in work_on_rows]
     if st.button("Delete selected", type="primary"):
@@ -225,7 +258,9 @@ st.header("Retrieve Content")
 media_id_content = st.text_input("Enter media ID to retrieve content")
 if st.button("Retrieve Content"):
     try:
-        contents_metadata, contents = media_manager.retrieve_media_metadata_and_contents(media_id_content)
+        contents_metadata, contents = media_manager.retrieve_media_metadata_and_contents(
+            media_id_content, encryption_key=encryption_key
+        )
         st.write(contents_metadata.src_filename)
         display_content(contents, contents_metadata.media_type)
         st.download_button("Download Content", data=contents, file_name=contents_metadata.src_filename)
@@ -238,18 +273,17 @@ media_id_preview = st.text_input("Enter media ID to retrieve preview")
 if st.button("Retrieve Preview"):
     try:
         preview_metadata = media_manager.retrieve_metadata(media_id_preview)
-        preview_contents = media_manager.retrieve_media_preview(media_id_preview)
+        preview_contents = media_manager.retrieve_media_preview(media_id_preview, encryption_key=encryption_key)
         st.image(preview_contents, preview_metadata.media_type)
     except Exception as e:
         st.error(f"Failed to retrieve preview: {str(e)}")
 
-
-# Retrieve preview section
+# Delete media section
 st.header("Delete Media")
 delete_media_id = st.text_input("Enter media ID to delete; this cannot be undone!")
 if st.button("Delete Media", type="primary"):
     try:
-        preview_metadata = media_manager.delete_media(delete_media_id)
+        media_manager.delete_media(delete_media_id)
         st.info("Deleted")
     except Exception as e:
         st.error(f"Failed to delete media: {str(e)}")
