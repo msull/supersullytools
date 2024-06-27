@@ -469,12 +469,19 @@ def generate_image_thumbnail(file_obj: IOBase, size=(200, 200)) -> bytes:
 def generate_audio_waveform(file_obj: IOBase) -> bytes:
     try:
         from pydub import AudioSegment
+        from pydub.exceptions import CouldntDecodeError
     except ImportError:
         return generate_no_preview_available()
     try:
         # Load the audio file
         file_obj.seek(0)
-        audio = AudioSegment.from_file(file_obj)
+        try:
+            audio = AudioSegment.from_file(file_obj)
+        except CouldntDecodeError as e:
+            if "pcm_s4le" in str(e):
+                audio = AudioSegment.from_file(file_obj, format="wav", codec="pcm_s16le")
+            else:
+                raise
 
         # Get the raw audio data as an array of samples
         samples = audio.get_array_of_samples()
