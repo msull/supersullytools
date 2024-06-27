@@ -24,6 +24,7 @@ dev = [
     "black",
     "boto3-stubs[dynamodb,bedrock-runtime]",
     "bumpver",
+    "cryptography",
     "diskcache",
     "humanize",
     "invoke",
