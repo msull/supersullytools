@@ -56,12 +56,12 @@ Usage:
 import base64
 import mimetypes
 import os
+import secrets
 from io import BytesIO
 from typing import Optional
 
 import pandas as pd
 import streamlit as st
-from cryptography.fernet import Fernet
 from logzero import logger
 from simplesingletable import DynamoDbMemory
 
@@ -116,12 +116,15 @@ st.title("Media Manager Streamlit App")
 
 # Key generation section
 st.header("Key Generation")
-if st.button("Generate New Fernet Key"):
-    new_key = Fernet.generate_key()
+if st.button("Generate New Encryption Key"):
+    # Generate a random secret key (AES256 needs 32 bytes)
+    new_key = base64.urlsafe_b64encode(secrets.token_bytes(32))
     st.code(new_key.decode(), language="text")
 
 # Global encryption key
 encryption_key = st.text_input("Global Encryption Key (optional)", type="password", key="global_encryption_key")
+if encryption_key:
+    encryption_key = base64.urlsafe_b64decode(encryption_key.encode())
 
 
 @st.experimental_dialog("Upload Media", width="large")
@@ -183,13 +186,18 @@ data = []
 previews = []
 
 
-@st.cache_data
-def get_preview_image_base64(media_id: str, encryption_key: Optional[str] = None) -> str:
+@st.cache_data(persist=True)
+def get_preview_image_base64(media_id: str, encryption_key: Optional[bytes] = None) -> str:
     preview_content = media_manager.retrieve_media_preview(media_id, encryption_key=encryption_key)
     return base64.b64encode(preview_content).decode("utf-8")
 
 
-for media in media_manager.list_available_media(num=50, oldest_first=False):
+@st.cache_data(ttl=15)
+def list_media():
+    return media_manager.list_available_media(num=50, oldest_first=False)
+
+
+for media in list_media():
     if media.preview_encrypted:
         if encryption_key:
             previews.append(get_preview_image_base64(media.resource_id, encryption_key))

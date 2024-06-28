@@ -85,6 +85,7 @@ Conditional Import:
 
 import gzip
 import os
+import secrets
 import subprocess
 import tempfile
 from enum import Enum
@@ -102,7 +103,8 @@ from smart_open import open
 from supersullytools.utils.misc import date_id
 
 try:
-    from cryptography.fernet import Fernet
+    # from cryptography.fernet import Fernet
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
     CRYPTOGRAPHY_AVAILABLE = True
 except ImportError:
@@ -234,27 +236,27 @@ class MediaManager:
         )
 
     @staticmethod
-    def _encrypt_contents(file_obj: IOBase, encryption_key: str) -> IOBase:
+    def _encrypt_contents(file_obj: IOBase, encryption_key: bytes) -> IOBase:
         if not CRYPTOGRAPHY_AVAILABLE:
             raise ImportError("cryptography library is not available. Install it to use encryption features.")
 
-        fernet = Fernet(encryption_key)
         file_obj.seek(0)
         data = file_obj.read()
-        encrypted_data = fernet.encrypt(data)
-        encrypted_io = BytesIO(encrypted_data)
+        # Encrypt a message
+        nonce = secrets.token_bytes(12)  # GCM mode needs 12 fresh bytes every time
+        ciphertext = nonce + AESGCM(encryption_key).encrypt(nonce, data, b"")
+        encrypted_io = BytesIO(ciphertext)
         encrypted_io.seek(0)
         return encrypted_io
 
     @staticmethod
-    def _decrypt_contents(file_obj: IOBase, encryption_key: str) -> IOBase:
+    def _decrypt_contents(file_obj: IOBase, encryption_key: bytes) -> IOBase:
         if not CRYPTOGRAPHY_AVAILABLE:
             raise ImportError("cryptography library is not available. Install it to use decryption features.")
 
-        fernet = Fernet(encryption_key)
         file_obj.seek(0)
-        encrypted_data = file_obj.read()
-        decrypted_data = fernet.decrypt(encrypted_data)
+        ciphertext = file_obj.read()
+        decrypted_data = AESGCM(encryption_key).decrypt(ciphertext[:12], ciphertext[12:], b"")
         decrypted_io = BytesIO(decrypted_data)
         decrypted_io.seek(0)
         return decrypted_io
@@ -265,7 +267,7 @@ class MediaManager:
         media_type: MediaType,
         file_obj: IOBase,
         use_gzip: bool = False,
-        encryption_key: Optional[str] = None,
+        encryption_key: Optional[bytes] = None,
         encrypt_preview: bool = True,
     ) -> StoredMedia:
         try:
@@ -392,18 +394,21 @@ class MediaManager:
             raise
 
     def retrieve_media_metadata_and_contents(
-        self, media_id: str, encryption_key: Optional[str] = None
+        self, media_id: str, encryption_key: Optional[bytes] = None
     ) -> tuple[StoredMedia, IO[bytes]]:
         metadata = self.retrieve_metadata(media_id)
         contents = self.retrieve_media_contents(media_id, encryption_key, metadata=metadata)
         return metadata, contents
 
     def retrieve_media_contents(
-        self, media_id: str, encryption_key: Optional[str] = None, metadata: Optional[StoredMedia] = None
+        self, media_id: str, encryption_key: Optional[bytes] = None, metadata: Optional[StoredMedia] = None
     ) -> IO[bytes]:
         metadata = metadata or self.retrieve_metadata(media_id)
         prefixed_file_name = "/".join([self.global_prefix, media_id]).replace("//", "/")
         s3_uri = f"s3://{self.bucket_name}/{prefixed_file_name}"
+
+        if metadata.content_encrypted and not encryption_key:
+            raise ValueError("Content encrypted; must supply encryption key")
 
         try:
             with open(s3_uri, "rb") as s3_file:
@@ -413,17 +418,15 @@ class MediaManager:
 
             output_data = BytesIO(contents)
 
+            if metadata.content_encrypted:
+                output_data = self._decrypt_contents(file_obj=output_data, encryption_key=encryption_key)
+
             if metadata.content_gzipped:
                 decompressed_io = BytesIO()
-                with gzip.GzipFile(fileobj=BytesIO(contents), mode="rb") as gz:
+                with gzip.GzipFile(fileobj=output_data, mode="rb") as gz:
                     decompressed_io.write(gz.read())
                 decompressed_io.seek(0)
                 output_data = decompressed_io
-
-            if metadata.content_encrypted:
-                if not encryption_key:
-                    raise ValueError("Content encrypted; must supply encryption key")
-                output_data = self._decrypt_contents(file_obj=output_data, encryption_key=encryption_key)
 
             return output_data
 
@@ -431,7 +434,7 @@ class MediaManager:
             self.logger.exception(f"Failed to retrieve contents for media ID {media_id}: {str(e)}")
             raise
 
-    def retrieve_media_preview(self, media_id: str, encryption_key: Optional[str] = None):
+    def retrieve_media_preview(self, media_id: str, encryption_key: Optional[bytes] = None):
         # note: for speed, we do not pull the metadata and check if the preview is encrypted and
         # raise an error if the key isn't supplied (which is done when retrieving contents)
         # if the preview is encrypted and no key is supplied, the preview image will just be busted
