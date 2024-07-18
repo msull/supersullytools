@@ -286,6 +286,15 @@ class Gpt4Omni(Gpt3p5Turbo):
     supports_images: bool = True
 
 
+class Gpt4OmniMini(Gpt3p5Turbo):
+    make: str = "OpenAI"
+    llm: str = "GPT 4 Omni Mini"
+    llm_id: str = "gpt-4o-mini"
+    input_price_per_1k: float = 0.000150
+    output_price_per_1k: float = 0.0006
+    supports_images: bool = True
+
+
 class Llama2Chat13B(BedrockModel):
     make: str = "Meta"
     llm: str = "Llama 2 Chat 13B"
@@ -465,6 +474,7 @@ class Mixtral8x7B(Mistral7B):
 ALL_MODELS = [
     Gpt3p5Turbo(),
     Gpt4Omni(),
+    Gpt4OmniMini(),
     Gpt4Turbo(),
     Llama2Chat13B(),
     Llama2Chat70B(),
