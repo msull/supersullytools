@@ -39,6 +39,6 @@ def load_data_from_file(file, replace_nan=True) -> "DataFrame":
         raise RuntimeError(f"Unknown / unsupported file type {file.type}")
 
     if replace_nan:
-        return data.replace({np.NAN: None})
+        return data.replace({np.nan: None})
     else:
         return data
