@@ -1,5 +1,6 @@
 import json
 from abc import ABC, abstractmethod
+from base64 import b64decode
 from datetime import datetime, timezone
 from logging import Logger
 from typing import TYPE_CHECKING, Literal, Optional, TypeVar, Union
@@ -146,38 +147,75 @@ class CompletionHandler:
                 raise ValueError(model)
 
     def _get_bedrock_completion(
-        self, llm: BedrockModel, prompt: str | list[PromptMessage | ImagePromptMessage], max_response_tokens: int
+        self,
+        llm: BedrockModel,
+        prompt: str | list[PromptMessage | ImagePromptMessage],
+        max_response_tokens: int,
+        temperature=0.0,
     ) -> "CompletionResponse":
         if not self.enable_bedrock:
             raise RuntimeError("Bedrock completions disabled!")
-        boto_input = llm.prepare_bedrock_body(prompt, max_response_tokens)
-        body = json.dumps(boto_input)
-
-        accept = "application/json"
-        content_type = "application/json"
+        # boto_input = llm.prepare_bedrock_body(prompt, max_response_tokens)
 
         self.logger.info(f"Generating Bedrock Completion {llm.llm_id}")
-        if self.debug_output_prompt_and_response:
-            self.logger.debug(f"LLM input:\n{boto_input}")
 
         # Invoke Bedrock API
         started_at = datetime.now(timezone.utc)
-        response = self.bedrock_runtime_client.invoke_model(
-            body=body, modelId=llm.llm_id, accept=accept, contentType=content_type
+        if isinstance(prompt, str):
+            prompt = [PromptMessage(content=prompt, role="user")]
+
+        # response = self.bedrock_runtime_client.invoke_model(
+        #     body=body, modelId=llm.llm_id, accept=accept, contentType=content_type
+        # )
+
+        messages = []
+        for msg in prompt:
+            match msg:
+                case PromptMessage():
+                    messages.append({"role": msg.role, "content": [{"text": msg.content}]})
+                case ImagePromptMessage():
+                    if not llm.supports_images:
+                        raise ValueError("Specified model does not have image prompt support")
+                    content = [{"text": msg.content}]
+                    for image, image_fmt in zip(msg.images, msg.image_formats):
+                        content.append({"image": {"format": image_fmt, "source": {"bytes": b64decode(image)}}})
+                    messages.append(
+                        {
+                            "role": msg.role,
+                            "content": content,
+                        }
+                    )
+                case _:
+                    raise ValueError("Bad prompt type")
+
+        if self.debug_output_prompt_and_response:
+            self.logger.debug(f"LLM input:\n{messages}")
+
+        bedrock_response = self.bedrock_runtime_client.converse(
+            modelId=llm.llm_id,
+            messages=messages,
+            system=[],
+            inferenceConfig={"temperature": temperature, "maxTokens": max_response_tokens},
+            # additionalModelRequestFields=additional_model_fields,
         )
-        response_body = response.get("body").read()
-        response["body"] = response_body
+
+        # return response
+        response_body = bedrock_response["output"]["message"]["content"][0]["text"].strip()
         finished_at = datetime.now(timezone.utc)
         self.logger.info("Generation complete")
         if self.debug_output_prompt_and_response:
-            self.logger.debug(f"LLM Response:\n{response}")
+            self.logger.debug(f"LLM Response:\n{bedrock_response}")
 
-        parsed_response = llm.parse_bedrock_response(response)
+        token_usage = bedrock_response["usage"]
+        input_tokens = token_usage["inputTokens"]
+        output_tokens = token_usage["outputTokens"]
+        # total_tokens = token_usage["totalTokens"]
+        # stop_reason = bedrock_response["stopReason"]
 
         return CompletionResponse(
-            content=parsed_response.content,
-            input_tokens=parsed_response.input_tokens,
-            output_tokens=parsed_response.output_tokens,
+            content=response_body,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             llm_metadata=CompletionModel.model_validate(llm, from_attributes=True),
             generated_at=finished_at,
             completion_time_ms=int((finished_at - started_at).total_seconds() * 1000),
@@ -327,30 +365,30 @@ class Llama2Chat13B(BedrockModel):
         )
 
 
-class Llama2Chat70B(Llama2Chat13B):
+class Llama3p1Instruct8B(Llama2Chat13B):
     make: str = "Meta"
-    llm: str = "Llama 2 Chat 70B"
-    llm_id: str = "meta.llama2-70b-chat-v1"
-    input_price_per_1k: float = 0.001950
-    output_price_per_1k: float = 0.002560
+    llm: str = "Llama 3.1 Instruct 8B"
+    llm_id: str = "meta.llama3-1-8b-instruct-v1:0"
+    input_price_per_1k: float = 0.00022
+    output_price_per_1k: float = 0.00022
     supports_images: bool = False
 
 
-class Llama3Instruct8B(Llama2Chat13B):
+class Llama3p1Instruct70B(Llama2Chat13B):
     make: str = "Meta"
-    llm: str = "Llama 3 Instruct 8B"
-    llm_id: str = "meta.llama3-8b-instruct-v1:0"
-    input_price_per_1k: float = 0.0004
-    output_price_per_1k: float = 0.0006
+    llm: str = "Llama 3.1 Instruct 70B"
+    llm_id: str = "meta.llama3-1-70b-instruct-v1:0"
+    input_price_per_1k: float = 0.00099
+    output_price_per_1k: float = 0.00099
     supports_images: bool = False
 
 
-class Llama3Instruct70B(Llama2Chat13B):
+class Llama3p1Instruct405B(Llama2Chat13B):
     make: str = "Meta"
-    llm: str = "Llama 3 Instruct 70B"
-    llm_id: str = "meta.llama3-70b-instruct-v1:0"
-    input_price_per_1k: float = 0.00265
-    output_price_per_1k: float = 0.0035
+    llm: str = "Llama 3.1 Instruct 405B"
+    llm_id: str = "meta.llama3-1-405b-instruct-v1:0"
+    input_price_per_1k: float = 0.00532
+    output_price_per_1k: float = 0.00532
     supports_images: bool = False
 
 
@@ -358,6 +396,66 @@ class Claude3Sonnet(BedrockModel):
     make: str = "Anthropic"
     llm: str = "Claude 3 Sonnet"
     llm_id: str = "anthropic.claude-3-sonnet-20240229-v1:0"
+    input_price_per_1k: float = 0.003
+    output_price_per_1k: float = 0.015
+    supports_images: bool = True
+
+    def prepare_bedrock_body(
+        self, prompt: str | list[PromptMessage | ImagePromptMessage], max_response_tokens: int
+    ) -> dict:
+        chat_history = []
+        if isinstance(prompt, str):
+            chat_history = [{"role": "user", "content": prompt}]
+        else:
+            for msg in prompt:
+                match msg:
+                    case PromptMessage():
+                        chat_history.append({"role": msg.role, "content": msg.content})
+                    case ImagePromptMessage():
+                        if not self.supports_images:
+                            raise ValueError("Specified model does not have image prompt support")
+                        content = [{"type": "text", "text": msg.content}]
+                        for image, image_fmt in zip(msg.images, msg.image_formats):
+                            content.append(
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": f"image/{image_fmt}",
+                                        "data": image,
+                                    },
+                                }
+                            )
+                        chat_history.append(
+                            {
+                                "role": msg.role,
+                                "content": content,
+                            }
+                        )
+                    case _:
+                        raise ValueError("Bad prompt type")
+
+        return {
+            "messages": chat_history,
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": max_response_tokens,
+        }
+
+    def parse_bedrock_response(self, response: dict) -> BedrockCompletionResponse:
+        response_body = json.loads(response["body"])
+        content = response_body["content"][0]["text"].strip()
+        response_headers = response["ResponseMetadata"]["HTTPHeaders"]
+        return BedrockCompletionResponse(
+            content=content,
+            input_tokens=int(response_headers["x-amzn-bedrock-input-token-count"]),
+            output_tokens=int(response_headers["x-amzn-bedrock-output-token-count"]),
+        )
+
+
+class Claude3p5Sonnet(BedrockModel):
+    make: str = "Anthropic"
+    llm: str = "Claude 3.5 Sonnet"
+    llm_id: str = "anthropic.claude-3-5-sonnet-20240620-v1:0"
     input_price_per_1k: float = 0.003
     output_price_per_1k: float = 0.015
     supports_images: bool = True
@@ -472,15 +570,18 @@ class Mixtral8x7B(Mistral7B):
 
 
 ALL_MODELS = [
-    Gpt3p5Turbo(),
+    # Gpt3p5Turbo(),
     Gpt4Omni(),
     Gpt4OmniMini(),
-    Gpt4Turbo(),
-    Llama2Chat13B(),
-    Llama2Chat70B(),
+    # Gpt4Turbo(),
+    # Llama2Chat13B(),
+    Llama3p1Instruct8B(),
+    Llama3p1Instruct70B(),
+    Llama3p1Instruct405B(),
     Mistral7B(),
     Mixtral8x7B(),
     Claude3Haiku(),
     Claude3Sonnet(),
+    Claude3p5Sonnet(),
     Claude3Opus(),
 ]
