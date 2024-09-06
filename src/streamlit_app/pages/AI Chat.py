@@ -8,7 +8,7 @@ from supersullytools.llm.completions import CompletionHandler, ImagePromptMessag
 
 def main():
     st.title("Completion Handler Testing")
-    ch = CompletionHandler(logger=logger, enable_bedrock=False)
+    ch = CompletionHandler(logger=logger, enable_bedrock=True)
     model = st.selectbox("Model", ch.available_models, format_func=lambda x: x.llm)
     image = st.file_uploader("Image", type=["png", "jpg"])
     if chat_input := st.chat_input():
