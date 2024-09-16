@@ -1,6 +1,5 @@
 import os
 import time
-from base64 import b64decode, b64encode
 
 import streamlit as st
 from logzero import logger
@@ -8,7 +7,7 @@ from simplesingletable import DynamoDbMemory
 
 from supersullytools.llm.agent import ChatAgent
 from supersullytools.llm.agent_tools.duckduckgo import get_ddg_tools
-from supersullytools.llm.completions import CompletionHandler, ImagePromptMessage
+from supersullytools.llm.completions import CompletionHandler
 from supersullytools.llm.trackers import CompletionTracker, DailyUsageTracking, GlobalUsageTracker
 from supersullytools.streamlit.chat_agent_utils import ChatAgentUtils
 
@@ -58,7 +57,6 @@ def main():
 
     agent = _agent()
     agent_utils = ChatAgentUtils(agent)
-    _ = agent_utils
 
     if "image_key" not in st.session_state:
         st.session_state.image_key = 1
@@ -79,52 +77,19 @@ def main():
     chat_msg = st.chat_input()
 
     with st.sidebar.expander("Chat Config", expanded=True):
-        include_function_calls = st.sidebar.toggle("Show function calls")
+        include_function_calls = st.sidebar.toggle("Show function calls", True)
 
-    num_chat_before = len(agent.get_chat_history(include_function_calls=include_function_calls))
-
-    for msg in agent.get_chat_history(include_function_calls=include_function_calls):
-        with st.chat_message(msg.role):
-            if msg.role == "system":
-                with st.popover("__system msg__"):
-                    st.write(msg.content)
-            else:
-                if isinstance(msg, ImagePromptMessage):
-                    main, images = st.columns((90, 10))
-                    main.write(msg.content)
-                    for x in msg.images:
-                        images.image(b64decode(x.encode()))
-                else:
-                    st.write(msg.content)
-
-    if agent.working:
-        with st.spinner("Agent working..."):
-            while agent.working:
-                agent.run_agent()
-                time.sleep(0.05)
-
-    # output any new messages
-    for msg in agent.get_chat_history(include_function_calls=include_function_calls)[num_chat_before:]:
-        with st.chat_message(msg.role):
-            st.write(msg.content)
+    agent_utils.display_chat_and_run_agent(include_function_calls)
 
     if chat_msg:
-        if st.session_state.upload_images:
-            prompt = ImagePromptMessage(
-                content=chat_msg,
-                images=[b64encode(image.getvalue()).decode() for image in st.session_state.upload_images],
-                image_formats=[
-                    "png" if image.name.endswith("png") else "jpeg" for image in st.session_state.upload_images
-                ],
-            )
-        else:
-            prompt = chat_msg
-        agent.message_from_user(prompt)
-        st.session_state.uploaded_images = st.session_state.upload_images
-        st.session_state.upload_images = []
-
-        time.sleep(0.01)
-        st.rerun()
+        if agent_utils.add_user_message(chat_msg, st.session_state.upload_images):
+            if st.session_state.upload_images:
+                # clearing out the upload_images immediately causes weird IO errors, so
+                # just push to another key and overwrite it later
+                st.session_state.uploaded_images = st.session_state.upload_images
+                st.session_state.upload_images = []
+            time.sleep(0.01)
+            st.rerun()
 
     global_tracker, daily_tracker = get_trackers()
     with st.sidebar.container():
