@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
     from openai import Client
 
+    from supersullytools.llm.trackers import CompletionTracker
+
 
 class PromptMessage(BaseModel):
     role: Literal["system", "user", "assistant"]
@@ -90,6 +92,7 @@ class CompletionHandler:
         openai_client: Optional["Client"] = None,
         bedrock_runtime_client: Optional["BedrockRuntimeClient"] = None,
         available_models: Optional[list["CompletionModel"]] = None,
+        completion_tracker: Optional["CompletionTracker"] = None,
         debug_output_prompt_and_response=False,
         enable_openai=True,
         enable_bedrock=True,
@@ -97,6 +100,8 @@ class CompletionHandler:
         self.logger = logger
         self.enable_openai = enable_openai
         self.enable_bedrock = enable_bedrock
+
+        self.completion_tracker = completion_tracker
 
         self.openai_client = None
         if self.enable_openai:
@@ -138,18 +143,29 @@ class CompletionHandler:
         if isinstance(model, str):
             model = self.get_model_by_name_or_id(model)
 
+        if isinstance(prompt, str):
+            prompt = [PromptMessage(content=prompt, role="user")]
+
         match model:
             case OpenAiModel():
-                return self._get_openai_completion(model, prompt, max_response_tokens)
+                response = self._get_openai_completion(model, prompt, max_response_tokens)
             case BedrockModel():
-                return self._get_bedrock_completion(model, prompt, max_response_tokens)
+                response = self._get_bedrock_completion(model, prompt, max_response_tokens)
             case _:
                 raise ValueError(model)
+
+        try:
+            if self.completion_tracker:
+                self.completion_tracker.track_completion(model, prompt, response)
+        except Exception:
+            self.logger.warning("Error tracking completion! Continuing", exc_info=True)
+
+        return response
 
     def _get_bedrock_completion(
         self,
         llm: BedrockModel,
-        prompt: str | list[PromptMessage | ImagePromptMessage],
+        prompt: list[PromptMessage | ImagePromptMessage],
         max_response_tokens: int,
         temperature=0.0,
     ) -> "CompletionResponse":
@@ -161,13 +177,6 @@ class CompletionHandler:
 
         # Invoke Bedrock API
         started_at = datetime.now(timezone.utc)
-        if isinstance(prompt, str):
-            prompt = [PromptMessage(content=prompt, role="user")]
-
-        # response = self.bedrock_runtime_client.invoke_model(
-        #     body=body, modelId=llm.llm_id, accept=accept, contentType=content_type
-        # )
-
         messages = []
         for msg in prompt:
             match msg:
@@ -222,40 +231,37 @@ class CompletionHandler:
         )
 
     def _get_openai_completion(
-        self, llm: OpenAiModel, prompt: str | list[PromptMessage | ImagePromptMessage], max_response_tokens: int
+        self, llm: OpenAiModel, prompt: list[PromptMessage | ImagePromptMessage], max_response_tokens: int
     ) -> "CompletionResponse":
         if not self.enable_openai:
             raise RuntimeError("OpenAI completions disabled!")
         is_image_prompt = False
-        if isinstance(prompt, str):
-            chat_history = [{"role": "user", "content": prompt}]
-        else:
-            chat_history = []
-            for msg in prompt:
-                match msg:
-                    case PromptMessage():
-                        chat_history.append({"role": msg.role, "content": msg.content})
-                    case ImagePromptMessage():
-                        is_image_prompt = True
-                        content = [{"type": "text", "text": msg.content}]
-                        for image, image_fmt in zip(msg.images, msg.image_formats):
-                            content.append(
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/{image_fmt};base64,{image}",
-                                        "detail": "high",
-                                    },
-                                }
-                            )
-                        chat_history.append(
+        chat_history = []
+        for msg in prompt:
+            match msg:
+                case PromptMessage():
+                    chat_history.append({"role": msg.role, "content": msg.content})
+                case ImagePromptMessage():
+                    is_image_prompt = True
+                    content = [{"type": "text", "text": msg.content}]
+                    for image, image_fmt in zip(msg.images, msg.image_formats):
+                        content.append(
                             {
-                                "role": msg.role,
-                                "content": content,
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/{image_fmt};base64,{image}",
+                                    "detail": "high",
+                                },
                             }
                         )
-                    case _:
-                        raise ValueError("Base prompt type")
+                    chat_history.append(
+                        {
+                            "role": msg.role,
+                            "content": content,
+                        }
+                    )
+                case _:
+                    raise ValueError("Base prompt type")
 
         started_at = datetime.now(timezone.utc)
         if is_image_prompt:
@@ -570,11 +576,11 @@ class Mixtral8x7B(Mistral7B):
 
 
 ALL_MODELS = [
-    # Gpt3p5Turbo(),
+    Gpt3p5Turbo(),
     Gpt4Omni(),
     Gpt4OmniMini(),
-    # Gpt4Turbo(),
-    # Llama2Chat13B(),
+    Gpt4Turbo(),
+    Llama2Chat13B(),
     Llama3p1Instruct8B(),
     Llama3p1Instruct70B(),
     Llama3p1Instruct405B(),
