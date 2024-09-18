@@ -59,10 +59,7 @@ class ChatAgentUtils(object):
 
     @staticmethod
     def select_llm(
-        completion_handler: CompletionHandler,
-        label,
-        default: str = "GPT 4 Omni Mini",
-        key=None,
+        completion_handler: CompletionHandler, label, default: str = "GPT 4 Omni Mini", key=None, **kwargs
     ) -> CompletionModel:
         completion_handler = completion_handler
         default_model = completion_handler.get_model_by_name_or_id(default)
@@ -72,7 +69,23 @@ class ChatAgentUtils(object):
             completion_handler.available_models.index(default_model),
             format_func=lambda x: x.llm,
             key=key,
-            label_visibility="collapsed",
+            **kwargs,
+        )
+
+    def select_llm_from_agent(
+        self, label, default_override: Optional[str] = None, key=None, **kwargs
+    ) -> CompletionModel:
+        default_model = (
+            self.chat_agent.completion_handler.get_model_by_name_or_id(default_override)
+            if default_override
+            else self.chat_agent.default_completion_model
+        )
+        return self.select_llm(
+            completion_handler=self.chat_agent.completion_handler,
+            label=label,
+            default=default_model.llm,
+            key=key,
+            **kwargs,
         )
 
     def display_chat_msg(self, msg: str):
@@ -83,8 +96,11 @@ class ChatAgentUtils(object):
             if content:
                 st.write(content)
             for tc in tool_calls:
-                with st.popover(tc["name"]):
-                    st.code(tc["parameters"])
+                if params := tc.get("parameters"):
+                    with st.popover(tc["name"]):
+                        st.write(params)
+                else:
+                    st.caption(f"used `{tc['name']}`")
         elif "<tool_result>" in msg:
             _, result_str = msg.split("<tool_result>", maxsplit=1)
             tool_result_str = [
