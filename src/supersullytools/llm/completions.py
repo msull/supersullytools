@@ -160,6 +160,8 @@ class CompletionHandler:
         except Exception:
             self.logger.warning("Error tracking completion! Continuing", exc_info=True)
 
+        self.logger.debug("Completion generated\n" + response.model_dump_json(indent=2, exclude={"content"}))
+
         return response
 
     def _get_bedrock_completion(
