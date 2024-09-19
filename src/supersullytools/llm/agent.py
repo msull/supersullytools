@@ -142,6 +142,12 @@ class ChatAgent(object):
 
         self._chat_start_idx = len(self.chat_history)
 
+    def add_tool_to_active_profile(self, tool: AgentTool):
+        try:
+            self.get_current_tool_by_name(tool.name)
+        except ValueError:
+            self._tool_profiles[self.active_tool_profile].append(tool)
+
     def replace_user_preferences(self, new_preferences: list[str]):
         self._user_preferences = [x for x in new_preferences] if new_preferences else []
 
@@ -288,7 +294,10 @@ class ChatAgent(object):
             return "TOOL FAILED!\n" + str(e)
 
     def get_current_tool_by_name(self, tool_name: str) -> _CT:
-        return next(x for x in self.get_current_tools() if x.name == tool_name)
+        try:
+            return next(x for x in self.get_current_tools() if x.name == tool_name)
+        except StopIteration:
+            raise ValueError(tool_name)
 
     def message_from_user(self, msg: str | PromptMessage | ImagePromptMessage):
         if not self.current_state == AgentStates.ready_for_message:

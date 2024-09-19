@@ -27,27 +27,28 @@ class ChatAgentUtils(object):
     ):
         self.chat_agent = chat_agent
         self.use_system_slash_cmds = use_system_slash_cmds
-        self._system_slash_cmds = {}
+        self._system_slash_cmds = {
+            "/help": SlashCmd(
+                name="Help",
+                description="Display available commands",
+                mechanism=self._display_slash_help,
+                refresh_after=False,
+            ),
+        }
+
         if self.use_system_slash_cmds:
-            self._system_slash_cmds = {
-                "/help": SlashCmd(
-                    name="Help",
-                    description="Display available commands",
-                    mechanism=self._display_slash_help,
-                    refresh_after=False,
-                ),
-                "/clear": SlashCmd(
-                    name="Clear Chat",
-                    description="Clear current chat history",
-                    mechanism=self.chat_agent.reset_history,
-                    refresh_after=True,
-                ),
-            }
+            self._system_slash_cmds["/clear"] = SlashCmd(
+                name="Clear Chat",
+                description="Clear current chat history",
+                mechanism=self.chat_agent.reset_history,
+                refresh_after=True,
+            )
         self.extra_slash_cmds = extra_slash_cmds
 
     def _display_slash_help(self):
         output = "### Available Commands\n\n"
-        for slash_cmd, obj in self._system_slash_cmds.items():
+        all_commands = {**self.extra_slash_cmds, **self._system_slash_cmds}
+        for slash_cmd, obj in all_commands.items():
             obj: SlashCmd
             output += f"* **{obj.name}** (`{slash_cmd}`): {obj.description}\n"
         return output
@@ -134,10 +135,10 @@ class ChatAgentUtils(object):
     def add_user_message(self, msg: str, images: Optional[list[UploadedFile]] = None) -> bool:
         """Returns true if the streamlit app should reload."""
         if msg.startswith("/"):
-            if not self.use_system_slash_cmds or self.extra_slash_cmds:
+            if not (self.use_system_slash_cmds or self.extra_slash_cmds):
                 raise RuntimeError("No slash commands available!")
             executed_command = None
-            if self.use_system_slash_cmds:
+            if self.use_system_slash_cmds or msg.startswith("/help"):
                 result = self._try_handle_system_slash_command(msg)
                 if result:
                     executed_command, _ = result
