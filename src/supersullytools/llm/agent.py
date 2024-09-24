@@ -101,6 +101,7 @@ class ChatAgent(object):
         ] = None,  # copy initial context from here; modify with add_to_context/remove_from_context
         # names of tools to run during the init process; must work with all default parameters
         init_tools_to_use: Optional[list[str]] = None,
+        default_max_response_tokens: int = 1000,
     ):
         self.agent_description = agent_description
         self.logger = logger
@@ -133,6 +134,7 @@ class ChatAgent(object):
         self._status_msg = "Initialization Complete"
         self._user_preferences = [x for x in user_preferences] if user_preferences else []
         self._llm_context = {**initial_llm_context} if initial_llm_context else {}
+        self.default_max_response_tokens = default_max_response_tokens
 
         for tool_name in init_tools_to_use or []:
             self.manually_invoke_tool(tool_name, {}, force_pass=True)
@@ -206,8 +208,12 @@ class ChatAgent(object):
         self.applied_tool_call_results = []
         self.chat_history: list[PromptMessage | ImagePromptMessage] = []
 
-    def run_agent(self, override_model: Optional[CompletionModel | str] = None):
+    def run_agent(
+        self, max_response_tokens: Optional[int] = None, override_model: Optional[CompletionModel | str] = None
+    ):
         # run this in a loop
+        max_response_tokens = max_response_tokens or self.default_max_response_tokens
+
         current_state = self.current_state
         self.logger.debug(f"Running agent {current_state=}")
         match self.current_state:
@@ -216,7 +222,9 @@ class ChatAgent(object):
             case AgentStates.received_message:
                 if self.chat_history[-1].role != "assistant":
                     self._status_msg = "Agent is generating a message"
-                    response = self._generate_response(override_model=override_model)
+                    response = self._generate_response(
+                        max_response_tokens=max_response_tokens, override_model=override_model
+                    )
                     if response:
                         if "<tool>" in response:
                             self._status_msg = "Preparing for tool use"
@@ -410,7 +418,9 @@ class ChatAgent(object):
         self.current_state = AgentStates.received_message
         return self.run_agent(override_model)
 
-    def _generate_response(self, max_attempts=3, override_model: Optional[CompletionModel | str] = None) -> str:
+    def _generate_response(
+        self, max_response_tokens: int, max_attempts=3, override_model: Optional[CompletionModel | str] = None
+    ) -> str:
         # allow specific code to override the default completion_fn
         if override_model:
             if isinstance(override_model, CompletionModel):
@@ -459,7 +469,9 @@ class ChatAgent(object):
         bad_responses = []
         while attempt_num <= max_attempts:
             self.logger.info(f"Generating completion, attempt {attempt_num} of {max_attempts}")
-            response = self.completion_handler.get_completion(model=this_model, prompt=chat_prompt)
+            response = self.completion_handler.get_completion(
+                model=this_model, prompt=chat_prompt, max_response_tokens=max_response_tokens
+            )
             try:
                 self._verify(response.content)
             except MsgVerificationError as e:
