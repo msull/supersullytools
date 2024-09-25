@@ -351,14 +351,8 @@ class ChatAgent(object):
             msg=f"<system>{msg}</system>",
             role="system",
         )
-        self._add_chat_msg(
-            (
-                "<tool>"
-                f'{{"name":"{tool.name}","label":"Manually called: {tool.name}", "parameters":{params} }}'
-                "</tool>"
-            ),
-            role="assistant",
-        )
+        tool_call_str = json.dumps({"name": tool.name, "label": f"Manually called: {tool.name}", "parameters": params})
+        self._add_chat_msg(f"<tool>{tool_call_str}</tool>", role="assistant")
         self.current_state = AgentStates.using_tools
 
     def get_pending_tool_calls(self) -> list[ToolAndParams]:

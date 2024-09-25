@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pandas import DataFrame
+    from pydantic import ValidationError
 
 
 def camel_to_snake(camel_case):
@@ -42,3 +43,17 @@ def load_data_from_file(file, replace_nan=True) -> "DataFrame":
         return data.replace({np.nan: None})
     else:
         return data
+
+
+def format_validation_error(error: "ValidationError") -> str:
+    """Parse Pydantic ValidationError and return a formatted markdown error message."""
+
+    messages = ["## Validation Errors\n"]
+
+    for error_item in error.errors():
+        loc = " -> ".join(map(str, error_item["loc"]))  # Join the location to create a readable path
+        msg = error_item["msg"]
+        param = error_item["type"]
+        messages.append(f"- **Location:** `{loc}`\n  **Message:** {msg}\n  **Type:** `{param}`\n")
+
+    return "\n".join(messages)

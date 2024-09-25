@@ -1,14 +1,16 @@
 # streamlit helpers for ChatAgent
+import json
 import time
 from base64 import b64decode, b64encode
 from typing import Callable, Optional
 
 import streamlit as st
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
-from supersullytools.llm.agent import ChatAgent
+from supersullytools.llm.agent import AgentTool, ChatAgent
 from supersullytools.llm.completions import CompletionHandler, CompletionModel, ImagePromptMessage
+from supersullytools.utils.misc import format_validation_error
 
 
 class SlashCmd(BaseModel):
@@ -43,7 +45,13 @@ class ChatAgentUtils(object):
                 mechanism=self.chat_agent.reset_history,
                 refresh_after=True,
             )
-        self.extra_slash_cmds = extra_slash_cmds
+            self._system_slash_cmds["/tool"] = SlashCmd(
+                name="Use a Tool",
+                description="Opens a dialog to enable manual tool usage",
+                mechanism=self._use_tool_manually,
+                refresh_after=False,
+            )
+        self.extra_slash_cmds = extra_slash_cmds or {}
 
     def _display_slash_help(self):
         output = "### Available Commands\n\n"
@@ -185,3 +193,40 @@ class ChatAgentUtils(object):
         for msg in self.chat_agent.get_chat_history(include_function_calls=include_function_calls)[num_chat_before:]:
             with st.chat_message(msg.role):
                 self.display_chat_msg(msg.content)
+
+    def _use_tool_manually(self):
+        @st.dialog("Trigger Tool", width="large")
+        def _d():
+            tool_to_use: AgentTool = st.selectbox(
+                "Tool to use", self.chat_agent.get_current_tools(), format_func=lambda x: x.name
+            )
+            tool_dict = self.chat_agent.tool_description_to_dict(tool_to_use)
+            if descr := tool_dict.get("description"):
+                st.write(descr)
+            st.write(tool_dict["parameters"])
+            default = {x: None for x in tool_dict["parameters"]}
+            params_str = st.text_area("tool params", json.dumps(default, indent=2), height=300)
+
+            try:
+                params_obj = tool_to_use.params_model.model_validate_json(params_str)
+            except ValidationError as e:
+                st.error(format_validation_error(e))
+                with st.popover("Invoke Tool", disabled=True):
+                    pass
+            else:
+                invoke_params = json.loads(params_str)
+                with st.popover("Invoke Tool"):
+                    st.subheader(f"Calling tool {tool_to_use.name}")
+                    st.write("Tool Call Parmeters:")
+                    st.code(params_obj.model_dump_json(indent=2))
+                    if st.button(
+                        "Invoke Locally",
+                        help="Execute the tool and show the results here, but do to store in session/chat",
+                    ):
+                        st.write(tool_to_use.invoke_tool(invoke_params))
+                    if st.button("Have Agent Invoke"):
+                        self.chat_agent.manually_invoke_tool(tool_to_use.name, invoke_params)
+                        time.sleep(0.01)
+                        st.rerun()
+
+        return _d()

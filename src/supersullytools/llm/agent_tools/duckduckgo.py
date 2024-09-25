@@ -14,7 +14,11 @@ class WebSearch(BaseModel):
     q: str
 
 
-def get_ddg_tools(include_news=True, include_web=True) -> list[AgentTool]:
+class ImageSearch(BaseModel):
+    q: str
+
+
+def get_ddg_tools(include_news=True, include_web=True, include_image=True) -> list[AgentTool]:
     def _handle_tool_usage(params: PydanticModel):
         with DDGS() as ddgs:
             match params:
@@ -22,9 +26,18 @@ def get_ddg_tools(include_news=True, include_web=True) -> list[AgentTool]:
                     result = ddgs.news(params.q, region="us-en", safesearch="off", max_results=10)
                 case WebSearch():
                     result = ddgs.text(params.q, region="us-en", safesearch="off", backend="api", max_results=10)
-                case _:
-                    raise ValueError(params)
-
+                case ImageSearch():
+                    result = ddgs.images(
+                        params.q,
+                        region="us-en",
+                        safesearch="off",
+                        size=None,
+                        # color="Monochrome",
+                        type_image=None,
+                        layout=None,
+                        license_image=None,
+                        max_results=10,
+                    )
         return result
 
     tools = []
@@ -38,6 +51,8 @@ def get_ddg_tools(include_news=True, include_web=True) -> list[AgentTool]:
         _add_tool(WebSearch, True)
     if include_news:
         _add_tool(NewsSearch, True)
+    if include_image:
+        _add_tool(ImageSearch, True)
 
     return tools
 
