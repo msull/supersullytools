@@ -178,7 +178,17 @@ class DailyUsageTracking(DynamoDbResource, UsageStats):
         return self.created_at.isoformat()
 
 
-TrackerTypes = Union[GlobalUsageTracker, DailyUsageTracking]
+class TopicUsageTracking(DynamoDbResource, UsageStats):
+    topic: str
+
+    @classmethod
+    def get_for_topic(cls, memory: DynamoDbMemory, topic: str, consistent_read: bool = True) -> "TopicUsageTracking":
+        if not (existing := memory.get_existing(topic, data_class=cls, consistent_read=consistent_read)):
+            return memory.create_new(cls, {"topic": topic}, override_id=topic)
+        return existing
+
+
+TrackerTypes = Union[GlobalUsageTracker, DailyUsageTracking, TopicUsageTracking]
 
 
 class CompletionTracker(object):
