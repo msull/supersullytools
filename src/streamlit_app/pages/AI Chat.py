@@ -8,7 +8,7 @@ from simplesingletable import DynamoDbMemory
 from supersullytools.llm.agent import ChatAgent
 from supersullytools.llm.agent_tools.duckduckgo import get_ddg_tools
 from supersullytools.llm.completions import CompletionHandler
-from supersullytools.llm.trackers import CompletionTracker, DailyUsageTracking, GlobalUsageTracker
+from supersullytools.llm.trackers import CompletionTracker, DailyUsageTracking, GlobalUsageTracker, SessionUsageTracking
 from supersullytools.streamlit.chat_agent_utils import ChatAgentUtils
 
 
@@ -27,11 +27,16 @@ def get_completion_handler() -> CompletionHandler:
     )
 
 
-def get_trackers() -> tuple[GlobalUsageTracker, DailyUsageTracking]:
+@st.cache_resource
+def get_session_usage_tracker() -> SessionUsageTracking:
+    return SessionUsageTracking()
+
+
+def get_trackers() -> tuple[GlobalUsageTracker, DailyUsageTracking, SessionUsageTracking]:
     memory = get_memory()
     global_tracker = GlobalUsageTracker.ensure_exists(memory)
     todays_tracker = DailyUsageTracking.get_for_today(memory)
-    return (global_tracker, todays_tracker)
+    return global_tracker, todays_tracker, get_session_usage_tracker()
 
 
 @st.cache_resource
@@ -91,12 +96,14 @@ def main():
             time.sleep(0.01)
             st.rerun()
 
-    global_tracker, daily_tracker = get_trackers()
-    with st.sidebar.container():
+    global_tracker, daily_tracker, session_tracker = get_trackers()
+    with st.sidebar.container(border=True):
         st.subheader("Total Usage")
         global_tracker.render_completion_cost_as_expander()
         st.subheader("Daily Usage")
         daily_tracker.render_completion_cost_as_expander()
+        st.subheader("Session Usage")
+        session_tracker.render_completion_cost_as_expander()
 
 
 if __name__ == "__main__":

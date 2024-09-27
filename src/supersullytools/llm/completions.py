@@ -56,6 +56,11 @@ class CompletionResponse(BaseModel):
         return round(input_cost + output_cost, 4)
 
 
+class PromptAndResponse(BaseModel):
+    prompt: list[PromptMessage | ImagePromptMessage]
+    response: CompletionResponse
+
+
 class OpenAiModel(CompletionModel):
     provider: Literal["OpenAI"] = "OpenAI"
 

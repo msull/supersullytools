@@ -1,15 +1,19 @@
 # streamlit helpers for ChatAgent
+import datetime
 import json
 import time
 from base64 import b64decode, b64encode
 from typing import Callable, Optional
 
 import streamlit as st
+from humanize import precisedelta
 from pydantic import BaseModel, ValidationError
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 from supersullytools.llm.agent import AgentTool, ChatAgent
-from supersullytools.llm.completions import CompletionHandler, CompletionModel, ImagePromptMessage
+from supersullytools.llm.completions import CompletionHandler, CompletionModel, ImagePromptMessage, PromptAndResponse
+from supersullytools.llm.trackers import SessionUsageTracking
+from supersullytools.streamlit.paginator import item_paginator
 from supersullytools.utils.misc import format_validation_error
 
 
@@ -51,7 +55,26 @@ class ChatAgentUtils(object):
                 mechanism=self._use_tool_manually,
                 refresh_after=False,
             )
+            if self.has_session_tracker():
+                self._system_slash_cmds["/completions"] = SlashCmd(
+                    name="View LLM Completions",
+                    description="Opens a dialog to browse LLM completions from the session",
+                    mechanism=self._browse_session_completions,
+                    refresh_after=False,
+                )
         self.extra_slash_cmds = extra_slash_cmds or {}
+
+    def get_session_tracker(self) -> Optional[SessionUsageTracking]:
+        if not self.chat_agent.completion_handler.completion_tracker:
+            return None
+        trackers = self.chat_agent.completion_handler.completion_tracker.trackers
+        try:
+            return next(x for x in trackers if isinstance(x, SessionUsageTracking))
+        except StopIteration:
+            return None
+
+    def has_session_tracker(self) -> bool:
+        return bool(self.get_session_tracker())
 
     def _display_slash_help(self):
         output = "### Available Commands\n\n"
@@ -194,6 +217,30 @@ class ChatAgentUtils(object):
             with st.chat_message(msg.role):
                 self.display_chat_msg(msg.content)
 
+    def _browse_session_completions(self):
+        now = datetime.datetime.now(tz=datetime.timezone.utc)
+
+        @st.dialog("Completions Viewer", width="large")
+        def _d():
+            if not self.has_session_tracker():
+                st.warning("No session tracker found!")
+
+            st.caption("Completions displayed newest-first")
+            completions = list(reversed(self.get_session_tracker().completions))
+
+            def _display(idx):
+                display_completion(completions[idx], now)
+
+            item_paginator(
+                "Completion",
+                [x.prompt[-1].content[:25] for x in completions],
+                item_handler_fn=_display,
+                enable_keypress_nav=True,
+                display_item_names=True,
+            )
+
+        return _d()
+
     def _use_tool_manually(self):
         @st.dialog("Trigger Tool", width="large")
         def _d():
@@ -230,3 +277,33 @@ class ChatAgentUtils(object):
                         st.rerun()
 
         return _d()
+
+
+def display_completion(par: PromptAndResponse, now):
+    generated_ago = precisedelta(now - par.response.generated_at, minimum_unit="minutes")
+    st.caption(par.response.generated_at.isoformat() + f" ({generated_ago} ago)")
+    st.write("**Prompt**")
+    with st.container(border=True):
+        if isinstance(par.prompt, str):
+            st.code(par.prompt)
+        else:
+            for msg in par.prompt:
+                with st.chat_message(msg.role):
+                    if len(msg.content) > 100:
+                        with st.popover(msg.content[:100] + " ... "):
+                            st.write(msg.content)
+                    else:
+                        st.write(msg.content)
+    st.write("**Response**")
+    with st.container(border=True):
+        st.code(par.response.content)
+
+    st.write("**Metadata**")
+    with st.container(border=True):
+        cols = iter(st.columns(2))
+        with next(cols):
+            st.json(par.response.llm_metadata.model_dump(mode="json"))
+        with next(cols):
+            st.json(par.response.model_dump(mode="json", exclude={"content", "llm_metadata"}))
+
+    st.caption(par.response.generated_at.isoformat() + f" ({generated_ago} ago)")

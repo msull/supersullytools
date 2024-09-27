@@ -50,7 +50,13 @@ from pydantic import BaseModel, Field
 from simplesingletable import DynamoDbMemory, DynamoDbResource
 from simplesingletable.extras.singleton import SingletonResource
 
-from supersullytools.llm.completions import CompletionModel, CompletionResponse, ImagePromptMessage, PromptMessage
+from supersullytools.llm.completions import (
+    CompletionModel,
+    CompletionResponse,
+    ImagePromptMessage,
+    PromptAndResponse,
+    PromptMessage,
+)
 
 
 class UsageStats(BaseModel):
@@ -188,7 +194,17 @@ class TopicUsageTracking(DynamoDbResource, UsageStats):
         return existing
 
 
-TrackerTypes = Union[GlobalUsageTracker, DailyUsageTracking, TopicUsageTracking]
+class SessionUsageTracking(UsageStats):
+    completions: list[PromptAndResponse] = Field(default_factory=list)
+
+    def reset(self):
+        self.completions = []
+        self.input_tokens_by_model = {}
+        self.output_tokens_by_model = {}
+        self.completions_by_model = {}
+
+
+TrackerTypes = Union[UsageStats, GlobalUsageTracker, DailyUsageTracking, TopicUsageTracking]
 
 
 class CompletionTracker(object):
@@ -201,6 +217,20 @@ class CompletionTracker(object):
     ):
         llm_to_track = model.llm
         for tracker in self.trackers:
-            self.memory.increment_counter(tracker, f"completions_by_model.{llm_to_track}")
-            self.memory.increment_counter(tracker, f"input_tokens_by_model.{llm_to_track}", completion.input_tokens)
-            self.memory.increment_counter(tracker, f"output_tokens_by_model.{llm_to_track}", completion.output_tokens)
+            if isinstance(tracker, SessionUsageTracking):
+                if llm_to_track in tracker.input_tokens_by_model:
+                    tracker.completions_by_model[llm_to_track] += 1
+                    tracker.input_tokens_by_model[llm_to_track] += completion.input_tokens
+                    tracker.output_tokens_by_model[llm_to_track] += completion.output_tokens
+                else:
+                    tracker.completions_by_model[llm_to_track] = 1
+                    tracker.input_tokens_by_model[llm_to_track] = completion.input_tokens
+                    tracker.output_tokens_by_model[llm_to_track] = completion.output_tokens
+                tracker.completions.append(PromptAndResponse(prompt=prompt, response=completion))
+
+            if isinstance(tracker, DynamoDbResource):
+                self.memory.increment_counter(tracker, f"completions_by_model.{llm_to_track}")
+                self.memory.increment_counter(tracker, f"input_tokens_by_model.{llm_to_track}", completion.input_tokens)
+                self.memory.increment_counter(
+                    tracker, f"output_tokens_by_model.{llm_to_track}", completion.output_tokens
+                )
