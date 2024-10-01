@@ -101,6 +101,7 @@ class CompletionHandler:
         debug_output_prompt_and_response=False,
         enable_openai=True,
         enable_bedrock=True,
+        default_max_response_tokens: int = 1000,
     ):
         self.logger = logger
         self.enable_openai = enable_openai
@@ -130,6 +131,8 @@ class CompletionHandler:
                 # what do?
                 raise ValueError("No models specified")
 
+        self.default_max_response_tokens = default_max_response_tokens
+
     def get_model_by_name_or_id(self, model_name_or_id: str) -> "CompletionModelType":
         try:
             return next(x for x in self.available_models if x.llm == model_name_or_id)
@@ -143,8 +146,10 @@ class CompletionHandler:
         self,
         model: Union[str, "CompletionModel"],
         prompt: str | list[PromptMessage | ImagePromptMessage],
-        max_response_tokens: int = 1000,
+        max_response_tokens: Optional[int] = None,
     ) -> "CompletionResponse":
+        if max_response_tokens is None:
+            max_response_tokens = self.default_max_response_tokens
         if isinstance(model, str):
             model = self.get_model_by_name_or_id(model)
 
