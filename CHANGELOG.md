@@ -5,7 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [5.6.0] 2024.09-30
+## [5.7.0] 2024-10-03
+
+### Added
+
+- Introduced `OpenAIO1Preview` and `OpenAIO1Mini` models with pricing details.
+- Added `get_simple_completion` method in `ChatAgent` for simplified message handling.
+- Enhanced `CompletionResponse` with `stop_reason` and `response_metadata`.
+
+### Changed
+
+- Updated `Gpt4Omni` pricing.
+- Adjusted OpenAI API payload to use `max_completion_tokens` for compatibility with new models.
+
+## [5.6.0] 2024-09-30
 
 ### Added
 
