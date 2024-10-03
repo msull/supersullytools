@@ -65,6 +65,7 @@ class PromptAndResponse(BaseModel):
 
 class OpenAiModel(CompletionModel):
     provider: Literal["OpenAI"] = "OpenAI"
+    supports_system_msgs: bool = True
 
 
 class BedrockCompletionResponse(BaseModel):
@@ -256,8 +257,16 @@ class CompletionHandler:
         for msg in prompt:
             match msg:
                 case PromptMessage():
-                    chat_history.append({"role": msg.role, "content": msg.content})
+                    if msg.role == "system":
+                        role = msg.role if llm.supports_system_msgs else "user"
+                    else:
+                        role = msg.role
+                    chat_history.append({"role": role, "content": msg.content})
                 case ImagePromptMessage():
+                    if msg.role == "system":
+                        role = msg.role if llm.supports_system_msgs else "user"
+                    else:
+                        role = msg.role
                     is_image_prompt = True
                     content = [{"type": "text", "text": msg.content}]
                     for image, image_fmt in zip(msg.images, msg.image_formats):
@@ -272,7 +281,7 @@ class CompletionHandler:
                         )
                     chat_history.append(
                         {
-                            "role": msg.role,
+                            "role": role,
                             "content": content,
                         }
                     )
@@ -330,7 +339,7 @@ class Gpt3p5Turbo(OpenAiModel):
     supports_images: bool = False
 
 
-class Gpt4Turbo(Gpt3p5Turbo):
+class Gpt4Turbo(OpenAiModel):
     make: str = "OpenAI"
     llm: str = "GPT 4 Turbo"
     llm_id: str = "gpt-4-turbo"
@@ -339,7 +348,7 @@ class Gpt4Turbo(Gpt3p5Turbo):
     supports_images: bool = True
 
 
-class Gpt4Omni(Gpt3p5Turbo):
+class Gpt4Omni(OpenAiModel):
     make: str = "OpenAI"
     llm: str = "GPT 4 Omni"
     llm_id: str = "gpt-4o"
@@ -348,7 +357,7 @@ class Gpt4Omni(Gpt3p5Turbo):
     supports_images: bool = True
 
 
-class Gpt4OmniMini(Gpt3p5Turbo):
+class Gpt4OmniMini(OpenAiModel):
     make: str = "OpenAI"
     llm: str = "GPT 4 Omni Mini"
     llm_id: str = "gpt-4o-mini"
@@ -357,22 +366,24 @@ class Gpt4OmniMini(Gpt3p5Turbo):
     supports_images: bool = True
 
 
-class OpenAIO1Preview(Gpt3p5Turbo):
+class OpenAIO1Preview(OpenAiModel):
     make: str = "OpenAI"
     llm: str = "o1-preview"
     llm_id: str = "o1-preview"
     input_price_per_1k: float = 0.015
     output_price_per_1k: float = 0.06
     supports_images: bool = False
+    supports_system_msgs: bool = False
 
 
-class OpenAIO1Mini(Gpt3p5Turbo):
+class OpenAIO1Mini(OpenAiModel):
     make: str = "OpenAI"
     llm: str = "o1-mini"
     llm_id: str = "o1-mini"
     input_price_per_1k: float = 0.003
     output_price_per_1k: float = 0.012
     supports_images: bool = False
+    supports_system_msgs: bool = False
 
 
 class Llama2Chat13B(BedrockModel):
