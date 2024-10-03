@@ -9,7 +9,13 @@ import jsonref
 import pytz
 from pydantic import BaseModel, computed_field
 
-from supersullytools.llm.completions import CompletionHandler, CompletionModel, ImagePromptMessage, PromptMessage
+from supersullytools.llm.completions import (
+    CompletionHandler,
+    CompletionModel,
+    CompletionResponse,
+    ImagePromptMessage,
+    PromptMessage,
+)
 
 PydanticModel = TypeVar("PydanticModel", bound=BaseModel)
 
@@ -337,6 +343,25 @@ class ChatAgent(object):
         if not self.tool_use_mode:
             return []
         return self._tool_profiles.get(self.active_tool_profile) or []
+
+    def get_simple_completion(
+        self,
+        msg: str | PromptMessage | ImagePromptMessage | list[str | PromptMessage | ImagePromptMessage],
+        model: Optional[CompletionModel] = None,
+    ) -> CompletionResponse:
+        if not isinstance(msg, list):
+            msg = [msg]
+        messages = msg
+        final_messages = []
+        for this_msg in messages:
+            if isinstance(this_msg, str):
+                final_messages.append(PromptMessage(content=this_msg, role="user"))
+            else:
+                final_messages.append(this_msg)
+
+        return self.completion_handler.get_completion(
+            model=model or self.default_completion_model, prompt=final_messages
+        )
 
     def manually_invoke_tool(self, tool_name, params: dict, force_pass=False):
         if not self.current_state == AgentStates.ready_for_message:

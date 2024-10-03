@@ -46,6 +46,8 @@ class CompletionResponse(BaseModel):
     output_tokens: int
     llm_metadata: CompletionModel
     generated_at: AwareDatetime
+    response_metadata: Optional[dict] = None
+    stop_reason: str
     completion_time_ms: int
 
     @computed_field
@@ -240,6 +242,8 @@ class CompletionHandler:
             llm_metadata=CompletionModel.model_validate(llm, from_attributes=True),
             generated_at=finished_at,
             completion_time_ms=int((finished_at - started_at).total_seconds() * 1000),
+            stop_reason=bedrock_response["stopReason"],
+            response_metadata={"usage": bedrock_response["usage"], "metrics": bedrock_response["metrics"]},
         )
 
     def _get_openai_completion(
@@ -285,7 +289,7 @@ class CompletionHandler:
             # have to use requests for this one
             headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.openai_client.api_key}"}
 
-            payload = {"model": llm.llm_id, "messages": chat_history, "max_tokens": max_response_tokens}
+            payload = {"model": llm.llm_id, "messages": chat_history, "max_completion_tokens": max_response_tokens}
             raw_response = requests.post(
                 "https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=300
             )
@@ -299,7 +303,7 @@ class CompletionHandler:
             if self.debug_output_prompt_and_response:
                 self.logger.debug(f"LLM input:\n{chat_history}")
             openai_response = self.openai_client.chat.completions.create(
-                model=llm.llm_id, messages=chat_history, max_tokens=max_response_tokens
+                model=llm.llm_id, messages=chat_history, max_completion_tokens=max_response_tokens
             )
             if self.debug_output_prompt_and_response:
                 self.logger.debug(f"LLM response:\n{openai_response}")
@@ -311,6 +315,8 @@ class CompletionHandler:
             output_tokens=openai_response.usage.completion_tokens,
             llm_metadata=CompletionModel.model_validate(llm, from_attributes=True),
             generated_at=finished_at,
+            stop_reason=openai_response.choices[0].finish_reason,
+            response_metadata=openai_response.model_dump(mode="json", exclude={"choices"}),
             completion_time_ms=int((finished_at - started_at).total_seconds() * 1000),
         )
 
@@ -337,8 +343,8 @@ class Gpt4Omni(Gpt3p5Turbo):
     make: str = "OpenAI"
     llm: str = "GPT 4 Omni"
     llm_id: str = "gpt-4o"
-    input_price_per_1k: float = 0.005
-    output_price_per_1k: float = 0.015
+    input_price_per_1k: float = 0.0025
+    output_price_per_1k: float = 0.01
     supports_images: bool = True
 
 
@@ -349,6 +355,24 @@ class Gpt4OmniMini(Gpt3p5Turbo):
     input_price_per_1k: float = 0.000150
     output_price_per_1k: float = 0.0006
     supports_images: bool = True
+
+
+class OpenAIO1Preview(Gpt3p5Turbo):
+    make: str = "OpenAI"
+    llm: str = "o1-preview"
+    llm_id: str = "o1-preview"
+    input_price_per_1k: float = 0.015
+    output_price_per_1k: float = 0.06
+    supports_images: bool = False
+
+
+class OpenAIO1Mini(Gpt3p5Turbo):
+    make: str = "OpenAI"
+    llm: str = "o1-mini"
+    llm_id: str = "o1-mini"
+    input_price_per_1k: float = 0.003
+    output_price_per_1k: float = 0.012
+    supports_images: bool = False
 
 
 class Llama2Chat13B(BedrockModel):
@@ -591,6 +615,9 @@ ALL_MODELS = [
     Gpt3p5Turbo(),
     Gpt4Omni(),
     Gpt4OmniMini(),
+    Gpt4Turbo(),
+    OpenAIO1Preview(),
+    OpenAIO1Mini(),
     Gpt4Turbo(),
     Llama2Chat13B(),
     Llama3p1Instruct8B(),

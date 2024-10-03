@@ -304,6 +304,8 @@ def display_completion(par: PromptAndResponse, now):
         with next(cols):
             st.json(par.response.llm_metadata.model_dump(mode="json"))
         with next(cols):
-            st.json(par.response.model_dump(mode="json", exclude={"content", "llm_metadata"}))
+            st.json(par.response.model_dump(mode="json", exclude={"content", "llm_metadata", "response_metadata"}))
+        st.write("**Raw Provider Response Metadata**")
+        st.json(par.response.response_metadata or {})
 
     st.caption(par.response.generated_at.isoformat() + f" ({generated_ago} ago)")
