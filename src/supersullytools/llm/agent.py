@@ -457,13 +457,26 @@ class ChatAgent(object):
 
         prompt += (
             "\n\n---\n\n"
-            "For now, simply acknowledge receipt of these instructions and indicate "
-            "you are ready to receive user messages."
+            "To begin, simply use the `BeginChatOperation` tool"
+            ' with the startup phrase "OrangeCreamsicle" to enable your tools and '
+            "indicate you are ready to process user messages."
         )
+        response = """
+I am ready for user messages.
+<tool>
+{
+  "name": "BeginChatOperation",
+  "label": "Performing startup task"
+  "parameters": {
+    "startup_phrase": "OrangeCreamsicle"
+  }
+}
+</tool>
+""".strip()
 
         chat_prefix = [
             PromptMessage(role="user", content=prompt),
-            PromptMessage(role="assistant", content="Instructions received, I am ready for user messages."),
+            PromptMessage(role="assistant", content=response),
         ]
 
         final_message: PromptMessage | ImagePromptMessage = self.chat_history[-1].model_copy()
