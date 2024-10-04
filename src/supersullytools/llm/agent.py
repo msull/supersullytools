@@ -525,6 +525,15 @@ class ChatAgent(object):
                 for key in required_keys:
                     if key not in tool_call:
                         error_msgs.append(f"tool call {idx+1} missing required field `{key}`")
+
+                    try:
+                        self.get_current_tool_by_name(tool_call["name"])
+                    except ValueError:
+                        all_tool_names = [x.name for x in self.get_current_tools()]
+                        error_msgs.append(
+                            f"Invalid tool specified {tool_call['name']}; Valid options are: "
+                            + ", ".join(all_tool_names)
+                        )
         if error_msgs:
             raise MsgVerificationError(error_msgs=error_msgs)
         return True
