@@ -605,6 +605,4 @@ Available tools:
 <available_tools>
 TOOLS_BLOCK_HERE
 </available_tools>
-
-<important>Do not forget to add the "label" when using a tool!</important>
 """.strip()
