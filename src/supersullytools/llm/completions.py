@@ -57,7 +57,14 @@ class CompletionResponse(BaseModel):
     @computed_field
     @property
     def completion_cost(self) -> float:
-        input_cost = self.input_tokens / 1000 * self.llm_metadata.input_price_per_1k
+        if self.cached_input_tokens and self.llm_metadata.cached_input_price_per_1k:
+            input_tokens = self.input_tokens
+            cached_input_tokens = self.cached_input_tokens
+            regular_cost = ((input_tokens - cached_input_tokens) / 1000) * self.llm_metadata.input_price_per_1k
+            cached_cost = (cached_input_tokens / 1000) * self.llm_metadata.cached_input_price_per_1k
+            input_cost = regular_cost + cached_cost
+        else:
+            input_cost = self.input_tokens / 1000 * self.llm_metadata.input_price_per_1k
         output_cost = self.output_tokens / 1000 * self.llm_metadata.output_price_per_1k
         return round(input_cost + output_cost, 4)
 
