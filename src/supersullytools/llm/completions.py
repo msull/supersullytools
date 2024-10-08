@@ -37,12 +37,16 @@ class CompletionModel(BaseModel, ABC):
     llm_id: str
     input_price_per_1k: float
     output_price_per_1k: float
+
+    cached_input_price_per_1k: Optional[float] = None
     supports_images: bool
 
 
 class CompletionResponse(BaseModel):
     content: str
     input_tokens: int
+    cached_input_tokens: int = 0
+    reasoning_tokens: int = 0
     output_tokens: int
     llm_metadata: CompletionModel
     generated_at: AwareDatetime
@@ -321,6 +325,8 @@ class CompletionHandler:
         return CompletionResponse(
             content=openai_response.choices[0].message.content,
             input_tokens=openai_response.usage.prompt_tokens,
+            reasoning_tokens=openai_response.usage.completion_tokens_details.reasoning_tokens,
+            cached_input_tokens=openai_response.usage.prompt_tokens_details.cached_tokens,
             output_tokens=openai_response.usage.completion_tokens,
             llm_metadata=CompletionModel.model_validate(llm, from_attributes=True),
             generated_at=finished_at,
@@ -353,6 +359,7 @@ class Gpt4Omni(OpenAiModel):
     llm: str = "GPT 4 Omni"
     llm_id: str = "gpt-4o"
     input_price_per_1k: float = 0.0025
+    cached_input_price_per_1k: float = 0.00125
     output_price_per_1k: float = 0.01
     supports_images: bool = True
 
@@ -362,6 +369,7 @@ class Gpt4OmniMini(OpenAiModel):
     llm: str = "GPT 4 Omni Mini"
     llm_id: str = "gpt-4o-mini"
     input_price_per_1k: float = 0.000150
+    cached_input_price_per_1k: float = 0.000075
     output_price_per_1k: float = 0.0006
     supports_images: bool = True
 
@@ -371,6 +379,7 @@ class OpenAIO1Preview(OpenAiModel):
     llm: str = "o1-preview"
     llm_id: str = "o1-preview"
     input_price_per_1k: float = 0.015
+    cached_input_price_per_1k: float = 0.0075
     output_price_per_1k: float = 0.06
     supports_images: bool = False
     supports_system_msgs: bool = False
@@ -381,6 +390,7 @@ class OpenAIO1Mini(OpenAiModel):
     llm: str = "o1-mini"
     llm_id: str = "o1-mini"
     input_price_per_1k: float = 0.003
+    cached_input_price_per_1k: float = 0.0015
     output_price_per_1k: float = 0.012
     supports_images: bool = False
     supports_system_msgs: bool = False

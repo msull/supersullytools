@@ -5,11 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [6.2.0]
 
 ### Changed
 
 - Continued tweaking initial agent prompt.
+- Added support for cached input tokens in cost calculations, as well as reporting of reasoning tokens in
+  CompletionResponse.
 
 ## [6.1.0] 2024-10-04
 
@@ -21,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Attempting better handling for Invalid tool usage.  
+- Attempting better handling for Invalid tool usage.
 
 ## [5.7.1] 2024-10-03
 

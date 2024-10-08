@@ -62,6 +62,8 @@ from supersullytools.llm.completions import (
 class UsageStats(BaseModel):
     # SECTION 1: llm completion tracking / helpers
     input_tokens_by_model: dict[str, int] = Field(default_factory=dict)
+    cached_input_tokens_by_model: dict[str, int] = Field(default_factory=dict)
+    reasoning_tokens_by_model: dict[str, int] = Field(default_factory=dict)
     output_tokens_by_model: dict[str, int] = Field(default_factory=dict)
     completions_by_model: dict[str, int] = Field(default_factory=dict)
 
@@ -78,12 +80,20 @@ class UsageStats(BaseModel):
 
         results = {}
         for model in self.completions_by_model:
-            model_class = model_class_lookup.get(model)
+            model_class: CompletionModel = model_class_lookup.get(model)
             if not model_class:
                 continue  # Skip if model_class is not found
+
             input_tokens = self.input_tokens_by_model.get(model, 0)
+            if model_class.cached_input_price_per_1k:
+                cached_input_tokens = self.cached_input_tokens_by_model.get(model, 0)
+                regular_cost = ((input_tokens - cached_input_tokens) / 1000) * model_class.input_price_per_1k
+                cached_cost = (cached_input_tokens / 1000) * model_class.cached_input_price_per_1k
+                input_cost = regular_cost + cached_cost
+            else:
+                input_cost = input_tokens / 1000 * model_class.input_price_per_1k
+
             output_tokens = self.output_tokens_by_model.get(model, 0)
-            input_cost = input_tokens / 1000 * model_class.input_price_per_1k
             output_cost = output_tokens / 1000 * model_class.output_price_per_1k
             results[model] = input_cost + output_cost
         return results
@@ -95,6 +105,7 @@ class UsageStats(BaseModel):
             {
                 "count": self.completions_by_model,
                 "input_tokens": self.input_tokens_by_model,
+                "cached_input_tokens": self.cached_input_tokens_by_model,
                 "output_tokens": self.output_tokens_by_model,
                 "cost": self.compute_cost_per_model(model_classes),
             }
@@ -212,6 +223,11 @@ class CompletionTracker(object):
         self.memory = memory
         self.trackers = trackers
 
+    def fixup_trackers(self):
+        for tracker in self.trackers:
+            if not tracker.cached_input_tokens_by_model and isinstance(tracker, DynamoDbResource):
+                self.memory.update_existing(tracker, {"cached_input_tokens_by_model": {}})
+
     def track_completion(
         self, model: CompletionModel, prompt: list[PromptMessage | ImagePromptMessage], completion: CompletionResponse
     ):
@@ -226,6 +242,12 @@ class CompletionTracker(object):
                     tracker.completions_by_model[llm_to_track] = 1
                     tracker.input_tokens_by_model[llm_to_track] = completion.input_tokens
                     tracker.output_tokens_by_model[llm_to_track] = completion.output_tokens
+
+                if completion.cached_input_tokens:
+                    if llm_to_track in tracker.cached_input_tokens_by_model:
+                        tracker.cached_input_tokens_by_model[llm_to_track] += completion.cached_input_tokens
+                    else:
+                        tracker.cached_input_tokens_by_model[llm_to_track] = completion.cached_input_tokens
                 tracker.completions.append(PromptAndResponse(prompt=prompt, response=completion))
 
             if isinstance(tracker, DynamoDbResource):
@@ -234,3 +256,7 @@ class CompletionTracker(object):
                 self.memory.increment_counter(
                     tracker, f"output_tokens_by_model.{llm_to_track}", completion.output_tokens
                 )
+                if completion.cached_input_tokens:
+                    self.memory.increment_counter(
+                        tracker, f"cached_input_tokens_by_model.{llm_to_track}", completion.cached_input_tokens
+                    )
