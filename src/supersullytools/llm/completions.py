@@ -332,8 +332,8 @@ class CompletionHandler:
         return CompletionResponse(
             content=openai_response.choices[0].message.content,
             input_tokens=openai_response.usage.prompt_tokens,
-            reasoning_tokens=openai_response.usage.completion_tokens_details.reasoning_tokens,
-            cached_input_tokens=openai_response.usage.prompt_tokens_details.cached_tokens,
+            reasoning_tokens=openai_response.usage.completion_tokens_details.reasoning_tokens or 0,
+            cached_input_tokens=openai_response.usage.prompt_tokens_details.cached_tokens or 0,
             output_tokens=openai_response.usage.completion_tokens,
             llm_metadata=CompletionModel.model_validate(llm, from_attributes=True),
             generated_at=finished_at,
