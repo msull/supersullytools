@@ -204,7 +204,9 @@ class CompletionHandler:
         # Invoke Bedrock API
         started_at = datetime.now(timezone.utc)
         messages = []
+        debug_print_messages = []
         for msg in prompt:
+            debug_print_messages.append({"role": msg.role, "content": [{"text": msg.content}]})
             match msg:
                 case PromptMessage():
                     messages.append({"role": msg.role, "content": [{"text": msg.content}]})
@@ -265,21 +267,20 @@ class CompletionHandler:
             raise RuntimeError("OpenAI completions disabled!")
         is_image_prompt = False
         chat_history = []
+        debug_print_chat_history = []
         for msg in prompt:
+            debug_print_chat_history.append({"role": msg.role, "content": msg.content})
+            if msg.role == "system":
+                role = msg.role if llm.supports_system_msgs else "user"
+            else:
+                role = msg.role
             match msg:
                 case PromptMessage():
-                    if msg.role == "system":
-                        role = msg.role if llm.supports_system_msgs else "user"
-                    else:
-                        role = msg.role
                     chat_history.append({"role": role, "content": msg.content})
                 case ImagePromptMessage():
-                    if msg.role == "system":
-                        role = msg.role if llm.supports_system_msgs else "user"
-                    else:
-                        role = msg.role
                     is_image_prompt = True
                     content = [{"type": "text", "text": msg.content}]
+                    debug_print_chat_history.append({"role": role, "content": msg.content, "include_image": True})
                     for image, image_fmt in zip(msg.images, msg.image_formats):
                         content.append(
                             {
@@ -305,7 +306,7 @@ class CompletionHandler:
                 raise ValueError("Specified model does not have image prompt support")
             self.logger.info("Generating Open AI ChatCompletion with Images")
             if self.debug_output_prompt_and_response:
-                self.logger.debug(f"LLM input:\n{chat_history}")
+                self.logger.debug(f"LLM input:\n{debug_print_chat_history}")
             # have to use requests for this one
             headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.openai_client.api_key}"}
 
