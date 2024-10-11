@@ -69,7 +69,7 @@ _CT = TypeVar("_CT", bound=AgentTool)
 
 
 class ToolAndParams(BaseModel):
-    label: str
+    reason: str
     tool: _CT
     params: dict
 
@@ -108,6 +108,7 @@ class ChatAgent(object):
         # names of tools to run during the init process; must work with all default parameters
         init_tools_to_use: Optional[list[str]] = None,
         default_max_response_tokens: int = 1000,
+        max_consecutive_tool_calls: int = 4,
     ):
         self.agent_description = agent_description
         self.logger = logger
@@ -141,6 +142,8 @@ class ChatAgent(object):
         self._user_preferences = [x for x in user_preferences] if user_preferences else []
         self._llm_context = {**initial_llm_context} if initial_llm_context else {}
         self.default_max_response_tokens = default_max_response_tokens
+        self.max_consecutive_tool_calls = max_consecutive_tool_calls
+        self._current_consecutive_tool_calls = 0
 
         for tool_name in init_tools_to_use or []:
             self.manually_invoke_tool(tool_name, {}, force_pass=True)
@@ -233,9 +236,11 @@ class ChatAgent(object):
                     )
                     if response:
                         if "<tool>" in response:
+                            self._current_consecutive_tool_calls += 1
                             self._status_msg = "Preparing for tool use"
                             self.current_state = AgentStates.pending_tool_use
                         else:
+                            self._current_consecutive_tool_calls = 0
                             self.current_state = AgentStates.ready_for_message
                         self._add_chat_msg(msg=response, role="assistant")
                 else:
@@ -286,10 +291,18 @@ class ChatAgent(object):
                 for tool, result in tools_and_results:
                     msg += f"<tool_used>{tool.tool_name}</tool_used>\n<tool_result>\n{result}\n</tool_result>\n"
 
-                msg += (
-                    "You may now use more tools or respond to the user. "
-                    "Do not send the tool_result directly; provide relevant information."
-                )
+                if self._current_consecutive_tool_calls < self.max_consecutive_tool_calls:
+                    msg += (
+                        f"This is consecutive tool call number {self._current_consecutive_tool_calls} "
+                        f"of {self.max_consecutive_tool_calls} max. You may now use more tools or respond to the user. "
+                        "Do not send the tool_result directly; provide relevant information."
+                    )
+                else:
+                    msg += (
+                        f"This is your final ({self.max_consecutive_tool_calls}) tool call; "
+                        f"you MUST now send a response to the user with no tool calls."
+                    )
+
                 self._add_chat_msg(msg, role="system")
 
                 self.logger.info("Tool use completed, sending results to Agent")
@@ -376,7 +389,7 @@ class ChatAgent(object):
             msg=f"<system>{msg}</system>",
             role="system",
         )
-        tool_call_str = json.dumps({"name": tool.name, "label": f"Manually called: {tool.name}", "parameters": params})
+        tool_call_str = json.dumps({"name": tool.name, "reason": f"Manually called: {tool.name}", "parameters": params})
         self._add_chat_msg(f"<tool>{tool_call_str}</tool>", role="assistant")
         self.current_state = AgentStates.using_tools
 
@@ -386,7 +399,7 @@ class ChatAgent(object):
             tool_obj = self.get_current_tool_by_name(pending_tool_call["name"])
             return_data.append(
                 ToolAndParams(
-                    label=pending_tool_call["label"], tool=tool_obj, params=pending_tool_call.get("parameters", {})
+                    reason=pending_tool_call["reason"], tool=tool_obj, params=pending_tool_call.get("parameters", {})
                 )
             )
 
@@ -466,7 +479,7 @@ I am ready for user messages.
 <tool>
 {
   "name": "BeginChatOperation",
-  "label": "Performing startup task"
+  "reason": "Performing startup task"
   "parameters": {
     "startup_phrase": "OrangeCreamsicle"
   }
@@ -532,7 +545,13 @@ I am ready for user messages.
     def _verify(self, msg: str):
         error_msgs = []
         if "<tool>" in msg:
-            required_keys = {"name", "label"}
+            if self._current_consecutive_tool_calls >= self.max_consecutive_tool_calls:
+                error_msgs.append(
+                    "Limit of consecutive tool calls with no user "
+                    "response has been reached; must return a message with no tool calls."
+                )
+
+            required_keys = {"name", "reason"}
 
             for idx, tool_call in enumerate(self.extract_tool_calls_from_msg(msg)):
                 for key in required_keys:
@@ -587,7 +606,7 @@ Use a tool by embedding the appropriate tag and JSON:
 <tool>
 {
   "name": "$TOOL_NAME",
-  "label": "Brief description (e.g., 'Getting upcoming events', 'Hiding date columns')",
+  "reason": "short explanation of why you are using the tool (e.g., 'Getting upcoming events', 'Hiding date columns')",
   "parameters": {
     "$PARAMETER_NAME": "$PARAMETER_VALUE"
   }
