@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.1.0] 2024-10-11
+
+### Added
+
+- Add `max_consecutive_tool_calls` parameter to ChatAgent to control how many turns the agent may take in a row.
+
 ## [7.0.0] 2024-10-10
 
 ### Changed
