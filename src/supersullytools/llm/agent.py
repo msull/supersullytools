@@ -552,20 +552,24 @@ I am ready for user messages.
                 )
 
             required_keys = {"name", "reason"}
+            try:
+                tool_calls = self.extract_tool_calls_from_msg(msg)
+            except Exception as e:
+                error_msgs.append(f"Failed parsing on the provided tool call JSON: {e}")
+            else:
+                for idx, tool_call in enumerate(tool_calls):
+                    for key in required_keys:
+                        if key not in tool_call:
+                            error_msgs.append(f"tool call {idx+1} missing required field `{key}`")
 
-            for idx, tool_call in enumerate(self.extract_tool_calls_from_msg(msg)):
-                for key in required_keys:
-                    if key not in tool_call:
-                        error_msgs.append(f"tool call {idx+1} missing required field `{key}`")
-
-                    try:
-                        self.get_current_tool_by_name(tool_call["name"])
-                    except ValueError:
-                        all_tool_names = [x.name for x in self.get_current_tools()]
-                        error_msgs.append(
-                            f"Invalid tool specified {tool_call['name']}; Valid options are: "
-                            + ", ".join(all_tool_names)
-                        )
+                        try:
+                            self.get_current_tool_by_name(tool_call["name"])
+                        except ValueError:
+                            all_tool_names = [x.name for x in self.get_current_tools()]
+                            error_msgs.append(
+                                f"Invalid tool specified {tool_call['name']}; Valid options are: "
+                                + ", ".join(all_tool_names)
+                            )
         if error_msgs:
             raise MsgVerificationError(error_msgs=error_msgs)
         return True
