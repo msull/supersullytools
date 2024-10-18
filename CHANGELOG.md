@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [8.0.0] 2024-10-18
+
+### Added
+
+* Added MANIFEST.in to exclude test / streamlit app files from the final package.
+
+### Changed
+
+* Handle errors with bad generated JSON when displaying tool calls
+
 ## [7.2.0] 2024-10-17
 
 ### Added
@@ -206,17 +216,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Added new `fuzzy_search.py` module under utils/ with some use tools for searching for similar strings in a list of
   items or otherwise scoring strings with `levenshtein`.
-
-## Unreleased
-
-
-### Added
-
-* Added MANIFEST.in to exclude test / streamlit app files from the final package.
-
-### Changed
-
-* Handle errors with bad generated JSON when displaying tool calls
 
 ## [2.3.0] 2024-05-06
 
