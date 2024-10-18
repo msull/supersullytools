@@ -207,6 +207,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Added new `fuzzy_search.py` module under utils/ with some use tools for searching for similar strings in a list of
   items or otherwise scoring strings with `levenshtein`.
 
+## Unreleased
+
+
+### Added
+
+* Added MANIFEST.in to exclude test / streamlit app files from the final package.
+
+### Changed
+
+* Handle errors with bad generated JSON when displaying tool calls
+
 ## [2.3.0] 2024-05-06
 
 * Added a new LLM completion helper tool, which more or less replaces the openai.chat_session functionality.

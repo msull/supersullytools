@@ -1,0 +1,2 @@
+prune src/tests
+prune src/streamlit_app

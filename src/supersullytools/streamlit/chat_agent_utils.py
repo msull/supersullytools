@@ -124,7 +124,11 @@ class ChatAgentUtils(object):
         if "<tool>" in msg:
             content, _ = msg.split("<tool>", maxsplit=1)
             content = content.strip()
-            tool_calls = self.chat_agent.extract_tool_calls_from_msg(msg)
+            try:
+                tool_calls = self.chat_agent.extract_tool_calls_from_msg(msg)
+            except Exception:
+                content += "\n\n<msg contains malformed tool call>"
+                tool_calls = []
             if content:
                 st.write(content)
             for tc in tool_calls:
