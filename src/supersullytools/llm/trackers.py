@@ -229,10 +229,15 @@ class CompletionTracker(object):
                 self.memory.update_existing(tracker, {"cached_input_tokens_by_model": {}})
 
     def track_completion(
-        self, model: CompletionModel, prompt: list[PromptMessage | ImagePromptMessage], completion: CompletionResponse
+        self,
+        model: CompletionModel,
+        prompt: list[PromptMessage | ImagePromptMessage],
+        completion: CompletionResponse,
+        override_trackers: Optional[list[TrackerTypes]] = None,
     ):
         llm_to_track = model.llm
-        for tracker in self.trackers:
+        trackers = override_trackers or self.trackers
+        for tracker in trackers:
             if isinstance(tracker, SessionUsageTracking):
                 if llm_to_track in tracker.input_tokens_by_model:
                     tracker.completions_by_model[llm_to_track] += 1

@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
     from openai import Client
 
-    from supersullytools.llm.trackers import CompletionTracker
+    from supersullytools.llm.trackers import CompletionTracker, UsageStats
 
 
 class PromptMessage(BaseModel):
@@ -161,6 +161,7 @@ class CompletionHandler:
         model: Union[str, "CompletionModel"],
         prompt: str | list[PromptMessage | ImagePromptMessage],
         max_response_tokens: Optional[int] = None,
+        extra_trackers: Optional[list["UsageStats"]] = None,
     ) -> "CompletionResponse":
         if max_response_tokens is None:
             max_response_tokens = self.default_max_response_tokens
@@ -183,6 +184,15 @@ class CompletionHandler:
                 self.completion_tracker.track_completion(model, prompt, response)
         except Exception:
             self.logger.warning("Error tracking completion! Continuing", exc_info=True)
+
+        try:
+            if extra_trackers:
+                if self.completion_tracker:
+                    self.completion_tracker.track_completion(model, prompt, response, override_trackers=extra_trackers)
+                else:
+                    self.logger.warning("Extra trackers provided but no completion tracker configured!")
+        except Exception:
+            self.logger.warning("Error with extra trackers! Continuing", exc_info=True)
 
         self.logger.debug("Completion generated\n" + response.model_dump_json(indent=2, exclude={"content"}))
 
