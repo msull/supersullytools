@@ -44,7 +44,6 @@ import datetime
 from typing import Optional, Union
 
 import pandas as pd
-import streamlit as st
 from boto3.dynamodb.conditions import Key
 from pydantic import BaseModel, Field
 from simplesingletable import DynamoDbMemory, DynamoDbResource
@@ -101,6 +100,8 @@ class UsageStats(BaseModel):
     def render_completion_cost_as_expander(
         self, header="Total Completions: ", model_classes: Optional[list[CompletionModel]] = None, total_in_header=True
     ):
+        import streamlit as st
+
         stats_df = pd.DataFrame(
             {
                 "count": self.completions_by_model,
@@ -142,6 +143,8 @@ class UsageStats(BaseModel):
         return results
 
     def render_transcript_cost_as_expander(self, model_cost_by_minute: dict[str, float]):
+        import streamlit as st
+
         cost_per_model = self.compute_transcript_cost_per_model(model_cost_by_minute)
         stats_df = pd.DataFrame(
             {
