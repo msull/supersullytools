@@ -102,6 +102,7 @@ class ChatAgent(object):
         tool_use_mode: ToolUseModes = ToolUseModes.automatic_safe_only,
         local_timezone_str="America/Los_Angeles",
         user_preferences: Optional[list[str]] = None,
+        require_reason: bool = True,
         initial_llm_context: Optional[
             dict
         ] = None,  # copy initial context from here; modify with add_to_context/remove_from_context
@@ -137,6 +138,7 @@ class ChatAgent(object):
         self.reset_history()
         self.current_state = AgentStates.ready_for_message
         self.local_timezone = pytz.timezone(local_timezone_str)
+        self.require_reason = require_reason
 
         self._status_msg = "Initialization Complete"
         self._user_preferences = [x for x in user_preferences] if user_preferences else []
@@ -397,9 +399,12 @@ class ChatAgent(object):
         return_data = []
         for pending_tool_call in self.get_pending_tool_calls_data():
             tool_obj = self.get_current_tool_by_name(pending_tool_call["name"])
+
             return_data.append(
                 ToolAndParams(
-                    reason=pending_tool_call["reason"], tool=tool_obj, params=pending_tool_call.get("parameters", {})
+                    reason=pending_tool_call.get("reason", "Tool usage"),
+                    tool=tool_obj,
+                    params=pending_tool_call.get("parameters", {}),
                 )
             )
 
@@ -550,8 +555,10 @@ I am ready for user messages.
                     "Limit of consecutive tool calls with no user "
                     "response has been reached; must return a message with no tool calls."
                 )
-
-            required_keys = {"name", "reason"}
+            if self.require_reason:
+                required_keys = {"name", "reason"}
+            else:
+                required_keys = {"name"}
             try:
                 tool_calls = self.extract_tool_calls_from_msg(msg)
             except Exception as e:
