@@ -1,4 +1,3 @@
-import json
 from abc import ABC, abstractmethod
 from base64 import b64decode
 from datetime import datetime, timezone
@@ -136,11 +135,11 @@ class CompletionHandler:
             self.available_models = available_models
         else:
             if enable_bedrock and enable_openai:
-                self.available_models = ALL_MODELS
+                self.available_models = DEFAULT_USE_MODELS
             elif enable_bedrock:
-                self.available_models = [x for x in ALL_MODELS if isinstance(x, BedrockModel)]
+                self.available_models = [x for x in DEFAULT_USE_MODELS if isinstance(x, BedrockModel)]
             elif enable_openai:
-                self.available_models = [x for x in ALL_MODELS if isinstance(x, OpenAiModel)]
+                self.available_models = [x for x in DEFAULT_USE_MODELS if isinstance(x, OpenAiModel)]
             else:
                 # what do?
                 raise ValueError("No models specified")
@@ -422,29 +421,6 @@ class Llama2Chat13B(BedrockModel):
     output_price_per_1k: float = 0.001000
     supports_images: bool = False
 
-    def prepare_bedrock_body(
-        self, prompt: str | list[PromptMessage | ImagePromptMessage], max_response_tokens: int
-    ) -> dict:
-        if not isinstance(prompt, str):
-            raise ValueError("Only support str type prompt for this model currently")
-
-        return {
-            "prompt": prompt,
-            "max_gen_len": max_response_tokens,
-            # "stop": [string],
-            # "temperature": float,
-            # "top_p": float,
-            # "top_k": int,
-        }
-
-    def parse_bedrock_response(self, response: dict) -> BedrockCompletionResponse:
-        response_body = json.loads(response["body"])
-        return BedrockCompletionResponse(
-            content=response_body["generation"],
-            input_tokens=response_body["prompt_token_count"],
-            output_tokens=response_body["generation_token_count"],
-        )
-
 
 class Llama3p1Instruct8B(Llama2Chat13B):
     make: str = "Meta"
@@ -481,57 +457,6 @@ class Claude3Sonnet(BedrockModel):
     output_price_per_1k: float = 0.015
     supports_images: bool = True
 
-    def prepare_bedrock_body(
-        self, prompt: str | list[PromptMessage | ImagePromptMessage], max_response_tokens: int
-    ) -> dict:
-        chat_history = []
-        if isinstance(prompt, str):
-            chat_history = [{"role": "user", "content": prompt}]
-        else:
-            for msg in prompt:
-                match msg:
-                    case PromptMessage():
-                        chat_history.append({"role": msg.role, "content": msg.content})
-                    case ImagePromptMessage():
-                        if not self.supports_images:
-                            raise ValueError("Specified model does not have image prompt support")
-                        content = [{"type": "text", "text": msg.content}]
-                        for image, image_fmt in zip(msg.images, msg.image_formats):
-                            content.append(
-                                {
-                                    "type": "image",
-                                    "source": {
-                                        "type": "base64",
-                                        "media_type": f"image/{image_fmt}",
-                                        "data": image,
-                                    },
-                                }
-                            )
-                        chat_history.append(
-                            {
-                                "role": msg.role,
-                                "content": content,
-                            }
-                        )
-                    case _:
-                        raise ValueError("Bad prompt type")
-
-        return {
-            "messages": chat_history,
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": max_response_tokens,
-        }
-
-    def parse_bedrock_response(self, response: dict) -> BedrockCompletionResponse:
-        response_body = json.loads(response["body"])
-        content = response_body["content"][0]["text"].strip()
-        response_headers = response["ResponseMetadata"]["HTTPHeaders"]
-        return BedrockCompletionResponse(
-            content=content,
-            input_tokens=int(response_headers["x-amzn-bedrock-input-token-count"]),
-            output_tokens=int(response_headers["x-amzn-bedrock-output-token-count"]),
-        )
-
 
 class Claude3p5Sonnet(BedrockModel):
     make: str = "Anthropic"
@@ -541,56 +466,14 @@ class Claude3p5Sonnet(BedrockModel):
     output_price_per_1k: float = 0.015
     supports_images: bool = True
 
-    def prepare_bedrock_body(
-        self, prompt: str | list[PromptMessage | ImagePromptMessage], max_response_tokens: int
-    ) -> dict:
-        chat_history = []
-        if isinstance(prompt, str):
-            chat_history = [{"role": "user", "content": prompt}]
-        else:
-            for msg in prompt:
-                match msg:
-                    case PromptMessage():
-                        chat_history.append({"role": msg.role, "content": msg.content})
-                    case ImagePromptMessage():
-                        if not self.supports_images:
-                            raise ValueError("Specified model does not have image prompt support")
-                        content = [{"type": "text", "text": msg.content}]
-                        for image, image_fmt in zip(msg.images, msg.image_formats):
-                            content.append(
-                                {
-                                    "type": "image",
-                                    "source": {
-                                        "type": "base64",
-                                        "media_type": f"image/{image_fmt}",
-                                        "data": image,
-                                    },
-                                }
-                            )
-                        chat_history.append(
-                            {
-                                "role": msg.role,
-                                "content": content,
-                            }
-                        )
-                    case _:
-                        raise ValueError("Bad prompt type")
 
-        return {
-            "messages": chat_history,
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": max_response_tokens,
-        }
-
-    def parse_bedrock_response(self, response: dict) -> BedrockCompletionResponse:
-        response_body = json.loads(response["body"])
-        content = response_body["content"][0]["text"].strip()
-        response_headers = response["ResponseMetadata"]["HTTPHeaders"]
-        return BedrockCompletionResponse(
-            content=content,
-            input_tokens=int(response_headers["x-amzn-bedrock-input-token-count"]),
-            output_tokens=int(response_headers["x-amzn-bedrock-output-token-count"]),
-        )
+class Claude3p5SonnetV2(BedrockModel):
+    make: str = "Anthropic"
+    llm: str = "Claude 3.5 Sonnet V2"
+    llm_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    input_price_per_1k: float = 0.003
+    output_price_per_1k: float = 0.015
+    supports_images: bool = True
 
 
 class Claude3Haiku(Claude3Sonnet):
@@ -599,6 +482,15 @@ class Claude3Haiku(Claude3Sonnet):
     llm_id: str = "anthropic.claude-3-haiku-20240307-v1:0"
     input_price_per_1k: float = 0.00025
     output_price_per_1k: float = 0.00125
+    supports_images: bool = True
+
+
+class Claude3p5Haiku(Claude3Sonnet):
+    make: str = "Anthropic"
+    llm: str = "Claude 3.5 Haiku"
+    llm_id: str = "anthropic.claude-3-5-haiku-20241022-v1:0"
+    input_price_per_1k: float = 0.001
+    output_price_per_1k: float = 0.005
     supports_images: bool = True
 
 
@@ -618,27 +510,6 @@ class Mistral7B(BedrockModel):
     input_price_per_1k: float = 0.000150
     output_price_per_1k: float = 0.000200
     supports_images: bool = False
-
-    def prepare_bedrock_body(
-        self, prompt: str | list[PromptMessage | ImagePromptMessage], max_response_tokens: int
-    ) -> dict:
-        if not isinstance(prompt, str):
-            raise ValueError("Only support str type prompt for this model currently")
-
-        return {
-            "prompt": f"<s>[INST]{prompt}[/INST]",
-            "max_tokens": max_response_tokens,
-        }
-
-    def parse_bedrock_response(self, response: dict) -> BedrockCompletionResponse:
-        response_body = json.loads(response["body"])
-        content = response_body["outputs"][0]["text"].strip()
-        response_headers = response["ResponseMetadata"]["HTTPHeaders"]
-        return BedrockCompletionResponse(
-            content=content,
-            input_tokens=int(response_headers["x-amzn-bedrock-input-token-count"]),
-            output_tokens=int(response_headers["x-amzn-bedrock-output-token-count"]),
-        )
 
 
 class Mixtral8x7B(Mistral7B):
@@ -665,7 +536,22 @@ ALL_MODELS = [
     Mistral7B(),
     Mixtral8x7B(),
     Claude3Haiku(),
+    Claude3p5Haiku(),
     Claude3Sonnet(),
     Claude3p5Sonnet(),
+    Claude3p5SonnetV2(),
+    Claude3Opus(),
+]
+
+DEFAULT_USE_MODELS = [
+    Gpt4Omni(),
+    Gpt4OmniMini(),
+    Gpt4Turbo(),
+    OpenAIO1Preview(),
+    OpenAIO1Mini(),
+    Claude3Haiku(),
+    Claude3p5Haiku(),
+    Claude3p5Sonnet(),
+    Claude3p5SonnetV2(),
     Claude3Opus(),
 ]
