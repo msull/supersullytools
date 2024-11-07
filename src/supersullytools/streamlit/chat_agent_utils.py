@@ -211,10 +211,19 @@ class ChatAgentUtils(object):
                     self.display_chat_msg(msg.content)
 
         if self.chat_agent.working:
-            with st.spinner("Agent working..."):
+            with st.status("Agent working...", expanded=True) as status:
+                # Define the callback function within the scope of `status`
+                def status_callback_fn(message):
+                    status.update(label=f"Agent working... {message}", state="running")
+                    st.write(message)
+
+                # Run the agent loop, passing the callback function
                 while self.chat_agent.working:
-                    self.chat_agent.run_agent()
-                    time.sleep(0.05)
+                    self.chat_agent.run_agent(status_callback_fn=status_callback_fn)
+                    time.sleep(2)
+
+                # Final status update when the agent completes
+                status.update(label="Agent completed work!", state="complete", expanded=False)
 
         # output any new messages
         for msg in self.chat_agent.get_chat_history(include_function_calls=include_function_calls)[num_chat_before:]:

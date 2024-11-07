@@ -171,6 +171,12 @@ class ChatAgent(object):
         with suppress(KeyError):
             self._llm_context.pop(key)
 
+    def _set_status_msg(self, msg, callback_fn=None):
+        if self._status_msg != msg:
+            self._status_msg = msg
+            if callback_fn:
+                callback_fn(msg)
+
     def get_current_status_msg(self):
         return self._status_msg
 
@@ -220,7 +226,10 @@ class ChatAgent(object):
         self.chat_history: list[PromptMessage | ImagePromptMessage] = []
 
     def run_agent(
-        self, max_response_tokens: Optional[int] = None, override_model: Optional[CompletionModel | str] = None
+        self,
+        max_response_tokens: Optional[int] = None,
+        override_model: Optional[CompletionModel | str] = None,
+        status_callback_fn: Optional[Callable[[str], None]] = None,
     ):
         # run this in a loop
         max_response_tokens = max_response_tokens or self.default_max_response_tokens
@@ -229,17 +238,17 @@ class ChatAgent(object):
         self.logger.debug(f"Running agent {current_state=}")
         match self.current_state:
             case AgentStates.ready_for_message:
-                self._status_msg = "Waiting for user message"
+                self._set_status_msg("Waiting for user message", status_callback_fn)
             case AgentStates.received_message:
                 if self.chat_history[-1].role != "assistant":
-                    self._status_msg = "Agent is generating a message"
+                    self._set_status_msg("Agent is generating a message", status_callback_fn)
                     response = self._generate_response(
                         max_response_tokens=max_response_tokens, override_model=override_model
                     )
                     if response:
                         if "<tool>" in response:
                             self._current_consecutive_tool_calls += 1
-                            self._status_msg = "Preparing for tool use"
+                            self._set_status_msg("Preparing for tool use", status_callback_fn)
                             self.current_state = AgentStates.pending_tool_use
                         else:
                             self._current_consecutive_tool_calls = 0
@@ -247,7 +256,9 @@ class ChatAgent(object):
                         self._add_chat_msg(msg=response, role="assistant")
                 else:
                     self.current_state = AgentStates.error
-                    self._status_msg = "Invalid state -- received_message but last msg in chat_history is from ai!"
+                    self._set_status_msg(
+                        "Invalid state -- received_message but last msg in chat_history is from ai!", status_callback_fn
+                    )
             case AgentStates.pending_tool_use:
                 self.logger.info("Tool use pending, checking if tool approval is required ")
                 pending_tools = self.get_pending_tool_calls()
@@ -277,13 +288,13 @@ class ChatAgent(object):
                     case _:
                         raise ValueError(self.tool_use_mode)
             case AgentStates.awaiting_tool_approval:
-                self._status_msg = "Waiting for tool approval"
+                self._set_status_msg("Waiting for tool approval", status_callback_fn)
             case AgentStates.using_tools:
                 self.logger.info("Using tools!")
-                self._status_msg = "Beginning tool use"
+                self._set_status_msg("Beginning tool use", status_callback_fn)
                 tools_and_results = []
                 for idx, pending_tool in enumerate(self.get_pending_tool_calls()):
-                    self._status_msg = f'Using Tool "{pending_tool.tool.name}"'
+                    self._set_status_msg(f'Using Tool "{pending_tool.tool.name}"', status_callback_fn)
                     result = self._handle_tool_usage(pending_tool)
                     self.applied_tool_calls.append(pending_tool)
                     self.applied_tool_call_results.append(result)
@@ -309,7 +320,7 @@ class ChatAgent(object):
 
                 self.logger.info("Tool use completed, sending results to Agent")
                 self.current_state = AgentStates.received_message
-                self._status_msg = "Ready to handle tool results"
+                self._set_status_msg("Ready to handle tool results", status_callback_fn)
             case AgentStates.initializing:
                 pass
             case _:
