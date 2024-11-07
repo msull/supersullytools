@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from base64 import b64decode
 from datetime import datetime, timezone
 from logging import Logger
@@ -88,16 +88,6 @@ class BedrockCompletionResponse(BaseModel):
 
 class BedrockModel(CompletionModel):
     provider: Literal["AWS Bedrock"] = "AWS Bedrock"
-
-    @abstractmethod
-    def prepare_bedrock_body(
-        self, prompt: str | list[PromptMessage | ImagePromptMessage], max_response_tokens: int
-    ) -> dict:
-        pass
-
-    @abstractmethod
-    def parse_bedrock_response(self, response: dict) -> BedrockCompletionResponse:
-        pass
 
 
 CompletionModelType = TypeVar("CompletionModelType", bound=CompletionModel)
@@ -204,6 +194,7 @@ class CompletionHandler:
         max_response_tokens: int,
         temperature=0.0,
     ) -> "CompletionResponse":
+        prompt = [] or prompt
         if not self.enable_bedrock:
             raise RuntimeError("Bedrock completions disabled!")
         # boto_input = llm.prepare_bedrock_body(prompt, max_response_tokens)
@@ -211,14 +202,22 @@ class CompletionHandler:
         self.logger.info(f"Generating Bedrock Completion {llm.llm_id}")
 
         # Invoke Bedrock API
+
+        if prompt[0].role == "system":
+            system_msg = prompt[0]
+            prompt = prompt[1:]
+        else:
+            system_msg = None
+
         started_at = datetime.now(timezone.utc)
         messages = []
         debug_print_messages = []
         for msg in prompt:
-            debug_print_messages.append({"role": msg.role, "content": [{"text": msg.content}]})
+            add_role = "user" if msg.role == "system" else msg.role
+            debug_print_messages.append({"role": add_role, "content": [{"text": msg.content}]})
             match msg:
                 case PromptMessage():
-                    messages.append({"role": msg.role, "content": [{"text": msg.content}]})
+                    messages.append({"role": add_role, "content": [{"text": msg.content}]})
                 case ImagePromptMessage():
                     if not llm.supports_images:
                         raise ValueError("Specified model does not have image prompt support")
@@ -227,7 +226,7 @@ class CompletionHandler:
                         content.append({"image": {"format": image_fmt, "source": {"bytes": b64decode(image)}}})
                     messages.append(
                         {
-                            "role": msg.role,
+                            "role": add_role,
                             "content": content,
                         }
                     )
@@ -237,10 +236,14 @@ class CompletionHandler:
         if self.debug_output_prompt_and_response:
             self.logger.debug(f"LLM input:\n{messages}")
 
+        if system_msg:
+            system_prompt = [{"text": system_msg.content}]
+        else:
+            system_prompt = []
         bedrock_response = self.bedrock_runtime_client.converse(
             modelId=llm.llm_id,
             messages=messages,
-            system=[],
+            system=system_prompt,
             inferenceConfig={"temperature": temperature, "maxTokens": max_response_tokens},
             # additionalModelRequestFields=additional_model_fields,
         )
