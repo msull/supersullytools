@@ -220,7 +220,7 @@ class ChatAgentUtils(object):
                 # Run the agent loop, passing the callback function
                 while self.chat_agent.working:
                     self.chat_agent.run_agent(status_callback_fn=status_callback_fn)
-                    time.sleep(2)
+                    time.sleep(0.05)
 
                 # Final status update when the agent completes
                 status.update(label="Agent completed work!", state="complete", expanded=False)
