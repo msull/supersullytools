@@ -38,6 +38,7 @@ def get_standard_completion_handler(
     logger=None,
     include_session_tracker: bool = False,
     store_source_tag: Optional[str] = None,
+    **kwargs,
 ) -> CompletionHandler:
     if logger is None:
         from logzero import logger
@@ -62,4 +63,5 @@ def get_standard_completion_handler(
             store_prompt_images_media_manager=media_manager,
             store_source_tag=store_source_tag,
         ),
+        **kwargs,
     )
