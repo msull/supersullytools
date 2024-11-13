@@ -3,7 +3,7 @@ import datetime
 import json
 import time
 from base64 import b64decode, b64encode
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 import streamlit as st
 from humanize import precisedelta
@@ -12,9 +12,12 @@ from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 from supersullytools.llm.agent import AgentTool, ChatAgent
 from supersullytools.llm.completions import CompletionHandler, CompletionModel, ImagePromptMessage, PromptAndResponse
-from supersullytools.llm.trackers import SessionUsageTracking
+from supersullytools.llm.trackers import SessionUsageTracking, StoredPromptAndResponse
 from supersullytools.streamlit.paginator import item_paginator
 from supersullytools.utils.misc import format_validation_error
+
+if TYPE_CHECKING:
+    from supersullytools.utils.media_manager import MediaManager
 
 
 class SlashCmd(BaseModel):
@@ -292,33 +295,81 @@ class ChatAgentUtils(object):
         return _d()
 
 
-def display_completion(par: PromptAndResponse, now):
+@st.cache_data
+def get_media_preview(_media_manager: "MediaManager", media_id):
+    return _media_manager.retrieve_media_preview(media_id)
+
+
+@st.cache_data
+def get_stored_media(_media_manager: "MediaManager", media_id):
+    return _media_manager.retrieve_media_contents(media_id)
+
+
+def display_completion(
+    par: PromptAndResponse | StoredPromptAndResponse, now, media_manager: Optional["MediaManager"] = None
+):
     generated_ago = precisedelta(now - par.response.generated_at, minimum_unit="minutes")
     st.caption(par.response.generated_at.isoformat() + f" ({generated_ago} ago)")
-    st.write("**Prompt**")
-    with st.container(border=True):
-        if isinstance(par.prompt, str):
-            st.code(par.prompt)
-        else:
-            for msg in par.prompt:
-                with st.chat_message(msg.role):
-                    if len(msg.content) > 100:
-                        with st.popover(msg.content[:100] + " ... "):
-                            st.write(msg.content)
-                    else:
-                        st.write(msg.content)
-    st.write("**Response**")
-    with st.container(border=True):
-        st.code(par.response.content)
 
-    st.write("**Metadata**")
-    with st.container(border=True):
-        cols = iter(st.columns(2))
-        with next(cols):
-            st.json(par.response.llm_metadata.model_dump(mode="json"))
-        with next(cols):
-            st.json(par.response.model_dump(mode="json", exclude={"content", "llm_metadata", "response_metadata"}))
-        st.write("**Raw Provider Response Metadata**")
-        st.json(par.response.response_metadata or {})
+    get_full_image_contents = False
+    if media_manager and isinstance(par, StoredPromptAndResponse):
+        get_full_image_contents = st.toggle("Retrieve full Image contents")
+
+    is_stored_par = isinstance(par, StoredPromptAndResponse)
+
+    if st.toggle("Show raw"):
+        if is_stored_par:
+            st.code(par.model_dump_json(indent=2, exclude=par.get_db_resource_base_keys()))
+        else:
+            st.code(par.model_dump_json(indent=2))
+    else:
+        st.write("**Prompt**")
+        with st.container(border=True):
+            if isinstance(par.prompt, str):
+                st.code(par.prompt)
+            else:
+                for idx, msg in enumerate(par.prompt):
+                    with st.chat_message(msg.role):
+                        if len(msg.content) > 100:
+                            with st.popover(msg.content[:100] + " ... ", use_container_width=True):
+                                st.write(msg.content)
+                        else:
+                            st.write(msg.content)
+                        if isinstance(msg, ImagePromptMessage):
+                            cols = iter(st.columns(len(msg.images)))
+                            for x in msg.images:
+                                next(cols).image(b64decode(x.encode()))
+                        if is_stored_par:
+                            if idx in par.prompt_image_media_ids:
+                                st.caption("This message included image content")
+                                stored_media_ids = par.prompt_image_media_ids[idx]
+                                if not stored_media_ids:
+                                    st.warning("Images not preserved")
+                                    continue
+                                if media_manager:
+                                    cols = iter(st.columns(len(stored_media_ids)))
+                                    for x in stored_media_ids:
+                                        if get_full_image_contents:
+                                            next(cols).image(get_stored_media(media_manager, x))
+                                        else:
+                                            with next(cols):
+                                                st.image(get_media_preview(media_manager, x))
+                                                load_full = st.button("➕", key=x)
+                                            if load_full:
+                                                st.image(get_stored_media(media_manager, x), use_column_width=True)
+
+        st.write("**Response**")
+        with st.container(border=True):
+            st.code(par.response.content)
+
+        st.write("**Metadata**")
+        with st.container(border=True):
+            cols = iter(st.columns(2))
+            with next(cols):
+                st.json(par.response.llm_metadata.model_dump(mode="json"))
+            with next(cols):
+                st.json(par.response.model_dump(mode="json", exclude={"content", "llm_metadata", "response_metadata"}))
+            st.write("**Raw Provider Response Metadata**")
+            st.json(par.response.response_metadata or {})
 
     st.caption(par.response.generated_at.isoformat() + f" ({generated_ago} ago)")

@@ -275,17 +275,19 @@ class StoredPromptAndResponse(DynamoDbResource):
 class CompletionTracker(object):
     def __init__(
         self,
-        memory: DynamoDbMemory,
+        memory: Optional[DynamoDbMemory],
         trackers: list[TrackerTypes],
         store_prompt_and_response: bool = False,
         store_source_tag: Optional[str] = None,
         store_prompt_images_media_manager: Optional[MediaManager] = None,
+        logger=None,
     ):
         self.memory = memory
         self.trackers = trackers
         self.store_prompt_and_response = store_prompt_and_response
         self.store_prompt_images_media_manager = store_prompt_images_media_manager
         self.store_source_tag = store_source_tag
+        self.logger = logger
 
     def fixup_trackers(self):
         for tracker in self.trackers:
@@ -324,6 +326,10 @@ class CompletionTracker(object):
                 tracker.completions.append(par)
 
             if isinstance(tracker, DynamoDbResource):
+                if self.memory is None:
+                    if self.logger:
+                        self.logger.warning("Unable to track usage without dynamodb memory")
+                    continue
                 self.memory.increment_counter(tracker, f"completions_by_model.{llm_to_track}")
                 self.memory.increment_counter(tracker, f"input_tokens_by_model.{llm_to_track}", completion.input_tokens)
                 self.memory.increment_counter(

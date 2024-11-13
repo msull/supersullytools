@@ -42,14 +42,20 @@ def get_standard_completion_handler(
 ) -> CompletionHandler:
     if logger is None:
         from logzero import logger
-    memory = get_standard_completion_dynamodb_memory(logger=logger)
-    media_manager = get_standard_completion_media_manager(logger)
+    trackers = []
+    if os.getenv("COMPLETION_TRACKING_DYNAMODB_TABLE"):
+        memory = get_standard_completion_dynamodb_memory(logger=logger)
+        trackers.append(GlobalUsageTracker.ensure_exists(memory))
+        trackers.append(DailyUsageTracking.get_for_today(memory))
+        trackers.extend(TopicUsageTracking.get_for_topic(memory, x) for x in (topics or []))
+    else:
+        memory = None
 
-    trackers = [
-        GlobalUsageTracker.ensure_exists(memory),
-        DailyUsageTracking.get_for_today(memory),
-    ]
-    trackers.extend(TopicUsageTracking.get_for_topic(memory, x) for x in (topics or []))
+    if os.getenv("COMPLETION_TRACKING_BUCKET_NAME"):
+        media_manager = get_standard_completion_media_manager(logger)
+    else:
+        media_manager = None
+
     trackers.extend(extra_trackers or [])
     if include_session_tracker:
         trackers.append(SessionUsageTracking())
@@ -59,9 +65,10 @@ def get_standard_completion_handler(
         completion_tracker=CompletionTracker(
             memory=memory,
             trackers=trackers,
-            store_prompt_and_response=True,
+            store_prompt_and_response=bool(memory),
             store_prompt_images_media_manager=media_manager,
             store_source_tag=store_source_tag,
+            logger=logger,
         ),
         **kwargs,
     )

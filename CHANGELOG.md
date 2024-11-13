@@ -5,13 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.1.0]
+
+## Changed
+
+* Standard completion handler tweaks.
 
 ## [10.0.4] 2024-11-12
 
 ### Changed
 
 * Daily tracker uses timezone-aware object for default date.
-
 
 ## [10.0.3] 2024-11-12
 
@@ -24,7 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 * Support kwargs on standard completion handler
-
 
 ## [10.0.1] 2024-11-12
 
@@ -72,7 +75,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-* Introduced a new `require_reason` parameter in the `ChatAgent` class to control whether a reason is mandatory for tool calls.
+* Introduced a new `require_reason` parameter in the `ChatAgent` class to control whether a reason is mandatory for tool
+  calls.
 * Enhanced tool call handling to provide a default reason ("Tool usage") when `require_reason` is set to `False`.
 
 ## [8.1.0] 2024-10-23

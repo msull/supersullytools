@@ -5,9 +5,9 @@ from logzero import logger
 
 from supersullytools.llm.agent import ChatAgent
 from supersullytools.llm.agent_tools.duckduckgo import get_ddg_tools
-from supersullytools.llm.trackers import SessionUsageTracking, StoredPromptAndResponse
+from supersullytools.llm.trackers import SessionUsageTracking, TopicUsageTracking
 from supersullytools.streamlit.chat_agent_utils import ChatAgentUtils
-from supersullytools.utils.common_init import get_standard_completion_dynamodb_memory, get_standard_completion_handler
+from supersullytools.utils.common_init import get_standard_completion_handler
 
 
 @st.cache_resource
@@ -22,15 +22,16 @@ def get_agent() -> ChatAgent:
         agent_description="You are a helpful assistant.",
         logger=logger,
         completion_handler=get_standard_completion_handler(
-            include_session_tracker=False, extra_trackers=[get_session_usage_tracker()]
+            include_session_tracker=False,
+            extra_trackers=[get_session_usage_tracker()],
+            store_source_tag="supersullytools",
+            topics=["AIChat"],
         ),
         tool_profiles=tool_profiles,
     )
 
 
 def main():
-    if st.button("Get Completions"):
-        st.write(get_standard_completion_dynamodb_memory().list_type_by_updated_at(StoredPromptAndResponse))
     with st.sidebar:
         model = ChatAgentUtils.select_llm(get_standard_completion_handler(), label="LLM to use")
     st.title("AI Chat Agent Testing")
@@ -79,7 +80,9 @@ def main():
             st.rerun()
 
     with st.sidebar.container(border=True):
-        for tracker in agent.completion_handler.completion_tracker.trackers:
+        for tracker in _agent().completion_handler.completion_tracker.trackers:
+            if isinstance(tracker, TopicUsageTracking):
+                continue
             st.subheader(tracker.__class__.__name__)
             tracker.render_completion_cost_as_expander()
 
