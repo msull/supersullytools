@@ -93,7 +93,6 @@ from io import BytesIO, IOBase
 from typing import IO, ClassVar, Optional
 
 import boto3
-import matplotlib.pyplot as plt
 from humanize import naturalsize
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import ConfigDict, computed_field
@@ -471,6 +470,7 @@ def generate_image_thumbnail(file_obj: IOBase, size=(200, 200)) -> bytes:
 
 def generate_audio_waveform(file_obj: IOBase) -> bytes:
     try:
+        import matplotlib.pyplot as plt
         from pydub import AudioSegment
         from pydub.exceptions import CouldntDecodeError
     except ImportError:
