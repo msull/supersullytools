@@ -94,10 +94,8 @@ from typing import IO, ClassVar, Optional
 
 import boto3
 from humanize import naturalsize
-from PIL import Image, ImageDraw, ImageFont
 from pydantic import ConfigDict, computed_field
 from simplesingletable import DynamoDbMemory, DynamoDbResource
-from smart_open import open
 
 from supersullytools.utils.misc import date_id
 
@@ -269,6 +267,8 @@ class MediaManager:
         encryption_key: Optional[bytes] = None,
         encrypt_preview: bool = True,
     ) -> StoredMedia:
+        from smart_open import open as smart_open
+
         try:
             media_type = MediaType[media_type]
         except KeyError:
@@ -300,7 +300,7 @@ class MediaManager:
             file_size_bytes = write_obj.tell()
             write_obj.seek(0)  # Reset the file pointer to the beginning
 
-            with open(s3_uri, "wb") as s3_file:
+            with smart_open(s3_uri, "wb") as s3_file:
                 s3_file.write(write_obj.read())
 
             self.logger.info(f"Successfully uploaded {source_file_name} to {s3_uri}")
@@ -321,7 +321,7 @@ class MediaManager:
             preview_io.seek(0)  # Reset the file pointer to the beginning
 
             preview_s3_uri = f"{s3_uri}_preview"
-            with open(preview_s3_uri, "wb") as s3_preview_file:
+            with smart_open(preview_s3_uri, "wb") as s3_preview_file:
                 s3_preview_file.write(preview_io.read())
 
             self.logger.info(f"Successfully uploaded preview for {source_file_name} to {preview_s3_uri}")
@@ -402,6 +402,8 @@ class MediaManager:
     def retrieve_media_contents(
         self, media_id: str, encryption_key: Optional[bytes] = None, metadata: Optional[StoredMedia] = None
     ) -> IO[bytes]:
+        from smart_open import open as smart_open
+
         metadata = metadata or self.retrieve_metadata(media_id)
         prefixed_file_name = "/".join([self.global_prefix, media_id]).replace("//", "/")
         s3_uri = f"s3://{self.bucket_name}/{prefixed_file_name}"
@@ -410,7 +412,7 @@ class MediaManager:
             raise ValueError("Content encrypted; must supply encryption key")
 
         try:
-            with open(s3_uri, "rb") as s3_file:
+            with smart_open(s3_uri, "rb") as s3_file:
                 contents = s3_file.read()
 
             self.logger.info(f"Successfully retrieved contents for media ID {media_id}")
@@ -437,11 +439,13 @@ class MediaManager:
         # note: for speed, we do not pull the metadata and check if the preview is encrypted and
         # raise an error if the key isn't supplied (which is done when retrieving contents)
         # if the preview is encrypted and no key is supplied, the preview image will just be busted
+        from smart_open import open as smart_open
+
         prefixed_file_name = "/".join([self.global_prefix, media_id]).replace("//", "/")
         s3_uri = f"s3://{self.bucket_name}/{prefixed_file_name}_preview"
 
         try:
-            with open(s3_uri, "rb") as s3_file:
+            with smart_open(s3_uri, "rb") as s3_file:
                 contents = s3_file.read()
             self.logger.info(f"Successfully retrieved preview contents for media ID {media_id}")
             if encryption_key:
@@ -453,13 +457,17 @@ class MediaManager:
             # raise
 
 
-def resize_image(image: Image, max_size: (int, int) = (200, 200)) -> Image:
+def resize_image(image, max_size: (int, int) = (200, 200)):
+    from PIL import Image
+
     image.thumbnail(max_size, Image.Resampling.LANCZOS)
     return image
 
 
 # Helper functions
 def generate_image_thumbnail(file_obj: IOBase, size=(200, 200)) -> bytes:
+    from PIL import Image
+
     image = Image.open(file_obj)
     image.thumbnail(size)
     thumb_io = BytesIO()
@@ -469,6 +477,8 @@ def generate_image_thumbnail(file_obj: IOBase, size=(200, 200)) -> bytes:
 
 
 def generate_audio_waveform(file_obj: IOBase) -> bytes:
+    from PIL import Image
+
     try:
         import matplotlib.pyplot as plt
         from pydub import AudioSegment
@@ -512,6 +522,8 @@ def generate_audio_waveform(file_obj: IOBase) -> bytes:
 
 
 def generate_pdf_preview(file_obj: IOBase) -> bytes:
+    from PIL import Image
+
     try:
         import pypdfium2 as pdfium
     except ImportError:
@@ -533,6 +545,9 @@ def generate_pdf_preview(file_obj: IOBase) -> bytes:
 
 
 def generate_video_thumbnail(file_obj: IOBase) -> bytes:
+    from PIL import Image
+    from smart_open import open as smart_open
+
     file_obj.seek(0)
     temp_file = tempfile.NamedTemporaryFile(delete=False)
     frame_file = None
@@ -562,7 +577,7 @@ def generate_video_thumbnail(file_obj: IOBase) -> bytes:
             raise Exception(f"Failed to generate video thumbnail: {error_message}")
 
         # Load the frame and convert to bytes
-        with open(frame_file.name, "rb") as img_file:
+        with smart_open(frame_file.name, "rb") as img_file:
             image = Image.open(img_file)
             image = resize_image(image, max_size=(200, 200))
             thumbnail_io = BytesIO()
@@ -581,6 +596,8 @@ def generate_no_preview_available() -> bytes:
 
 
 def generate_text_image(text: str, width=200, height=200, font_size=10) -> bytes:
+    from PIL import Image, ImageDraw, ImageFont
+
     # Generate a "No Preview Available" image
     image = Image.new("RGB", (width, height), color=(255, 255, 255))
     draw = ImageDraw.Draw(image)
