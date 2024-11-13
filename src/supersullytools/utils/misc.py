@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from random import choices
 from string import ascii_lowercase
 from typing import TYPE_CHECKING
@@ -14,8 +14,12 @@ def camel_to_snake(camel_case):
     return snake_case
 
 
+def now_with_dt():
+    return datetime.now(tz=timezone.utc)
+
+
 def date_id(now=None):
-    now = now or datetime.utcnow()
+    now = now or now_with_dt()
     return now.strftime("%Y%m%d%H%M%S") + "".join(choices(ascii_lowercase, k=6))
 
 

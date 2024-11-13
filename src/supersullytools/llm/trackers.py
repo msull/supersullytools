@@ -60,6 +60,7 @@ from supersullytools.llm.completions import (
     PromptMessage,
 )
 from supersullytools.utils.media_manager import MediaManager, MediaType
+from supersullytools.utils.misc import now_with_dt
 
 
 class UsageStats(BaseModel):
@@ -178,7 +179,8 @@ class DailyUsageTracking(DynamoDbResource, UsageStats):
 
     @classmethod
     def get_for_today(cls, memory: DynamoDbMemory, today: Optional[datetime.date] = None, consistent_read: bool = True):
-        today = today or datetime.date.today()
+        today = now_with_dt().date()
+        # today = today or datetime.date.today()
         key = today.strftime("%Y%m%d")
         if not (existing := memory.get_existing(key, data_class=cls, consistent_read=consistent_read)):
             return memory.create_new(cls, {"day": today.isoformat()}, override_id=key)
