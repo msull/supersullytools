@@ -1,42 +1,18 @@
-import os
 import time
 
 import streamlit as st
 from logzero import logger
-from simplesingletable import DynamoDbMemory
 
 from supersullytools.llm.agent import ChatAgent
 from supersullytools.llm.agent_tools.duckduckgo import get_ddg_tools
-from supersullytools.llm.completions import CompletionHandler
-from supersullytools.llm.trackers import CompletionTracker, DailyUsageTracking, GlobalUsageTracker, SessionUsageTracking
+from supersullytools.llm.trackers import SessionUsageTracking, StoredPromptAndResponse
 from supersullytools.streamlit.chat_agent_utils import ChatAgentUtils
-
-
-@st.cache_resource
-def get_memory() -> DynamoDbMemory:
-    return DynamoDbMemory(logger=logger, table_name=os.environ.get("DYNAMODB_TABLE"))
-
-
-@st.cache_resource
-def get_completion_handler() -> CompletionHandler:
-    memory = get_memory()
-    trackers = get_trackers()
-    completion_tracker = CompletionTracker(memory=memory, trackers=list(trackers))
-    return CompletionHandler(
-        logger=logger, debug_output_prompt_and_response=False, completion_tracker=completion_tracker
-    )
+from supersullytools.utils.common_init import get_standard_completion_dynamodb_memory, get_standard_completion_handler
 
 
 @st.cache_resource
 def get_session_usage_tracker() -> SessionUsageTracking:
     return SessionUsageTracking()
-
-
-def get_trackers() -> tuple[GlobalUsageTracker, DailyUsageTracking, SessionUsageTracking]:
-    memory = get_memory()
-    global_tracker = GlobalUsageTracker.ensure_exists(memory)
-    todays_tracker = DailyUsageTracking.get_for_today(memory)
-    return global_tracker, todays_tracker, get_session_usage_tracker()
 
 
 @st.cache_resource
@@ -45,14 +21,18 @@ def get_agent() -> ChatAgent:
     return ChatAgent(
         agent_description="You are a helpful assistant.",
         logger=logger,
-        completion_handler=get_completion_handler(),
+        completion_handler=get_standard_completion_handler(
+            include_session_tracker=False, extra_trackers=[get_session_usage_tracker()]
+        ),
         tool_profiles=tool_profiles,
     )
 
 
 def main():
+    if st.button("Get Completions"):
+        st.write(get_standard_completion_dynamodb_memory().list_type_by_updated_at(StoredPromptAndResponse))
     with st.sidebar:
-        model = ChatAgentUtils.select_llm(get_completion_handler(), label="LLM to use")
+        model = ChatAgentUtils.select_llm(get_standard_completion_handler(), label="LLM to use")
     st.title("AI Chat Agent Testing")
 
     def _agent():
@@ -98,14 +78,10 @@ def main():
             time.sleep(0.01)
             st.rerun()
 
-    global_tracker, daily_tracker, session_tracker = get_trackers()
     with st.sidebar.container(border=True):
-        st.subheader("Total Usage")
-        global_tracker.render_completion_cost_as_expander()
-        st.subheader("Daily Usage")
-        daily_tracker.render_completion_cost_as_expander()
-        st.subheader("Session Usage")
-        session_tracker.render_completion_cost_as_expander()
+        for tracker in agent.completion_handler.completion_tracker.trackers:
+            st.subheader(tracker.__class__.__name__)
+            tracker.render_completion_cost_as_expander()
 
 
 if __name__ == "__main__":

@@ -41,13 +41,16 @@ Examples:
 """
 
 import datetime
-from typing import Optional, Union
+from base64 import b64decode
+from io import BytesIO
+from typing import ClassVar, Optional, Union
 
 import pandas as pd
 from boto3.dynamodb.conditions import Key
 from pydantic import BaseModel, Field
 from simplesingletable import DynamoDbMemory, DynamoDbResource
 from simplesingletable.extras.singleton import SingletonResource
+from simplesingletable.models import ResourceConfig
 
 from supersullytools.llm.completions import (
     CompletionModel,
@@ -56,6 +59,7 @@ from supersullytools.llm.completions import (
     PromptAndResponse,
     PromptMessage,
 )
+from supersullytools.utils.media_manager import MediaManager, MediaType
 
 
 class UsageStats(BaseModel):
@@ -221,10 +225,65 @@ class SessionUsageTracking(UsageStats):
 TrackerTypes = Union[UsageStats, GlobalUsageTracker, DailyUsageTracking, TopicUsageTracking]
 
 
+class StoredPromptAndResponse(DynamoDbResource):
+    prompt: list[PromptMessage]
+    prompt_image_media_ids: dict[int, list[str]] = Field(default_factory=dict)
+    response: CompletionResponse
+    resource_config: ClassVar[ResourceConfig] = ResourceConfig(compress_data=True)
+    source_tag: Optional[str] = None
+
+    @classmethod
+    def create_from_prompt_and_response(
+        cls,
+        par: PromptAndResponse,
+        memory: DynamoDbMemory,
+        media_manager: Optional[MediaManager],
+        source_tag: Optional[str] = None,
+    ) -> "StoredPromptAndResponse":
+        """Convert image prompt messages into prompt messages; if an optional media manager is supplied, the images will be preserved and IDs attached."""
+        prompt_image_media_ids = {}
+        new_prompt: list[PromptMessage] = []
+        for idx, message in enumerate(par.prompt):
+            if isinstance(message, ImagePromptMessage):
+                prompt_image_media_ids[idx] = []
+                new_prompt.append(PromptMessage(role=message.role, content=message.content))
+                if media_manager:
+                    for image, format in zip(message.images, message.image_formats):
+                        stored_media_obj = media_manager.upload_new_media(
+                            source_file_name=f"image_from_completion:{format}",
+                            media_type=MediaType.image,
+                            file_obj=BytesIO(b64decode(image.encode())),
+                            use_gzip=False,
+                        )
+                        prompt_image_media_ids[idx].append(stored_media_obj.resource_id)
+
+            else:
+                new_prompt.append(message)
+        return memory.create_new(
+            StoredPromptAndResponse,
+            {
+                "prompt": new_prompt,
+                "response": par.response,
+                "prompt_image_media_ids": prompt_image_media_ids,
+                "source_tag": source_tag,
+            },
+        )
+
+
 class CompletionTracker(object):
-    def __init__(self, memory: DynamoDbMemory, trackers: list[TrackerTypes]):
+    def __init__(
+        self,
+        memory: DynamoDbMemory,
+        trackers: list[TrackerTypes],
+        store_prompt_and_response: bool = False,
+        store_source_tag: Optional[str] = None,
+        store_prompt_images_media_manager: Optional[MediaManager] = None,
+    ):
         self.memory = memory
         self.trackers = trackers
+        self.store_prompt_and_response = store_prompt_and_response
+        self.store_prompt_images_media_manager = store_prompt_images_media_manager
+        self.store_source_tag = store_source_tag
 
     def fixup_trackers(self):
         for tracker in self.trackers:
@@ -237,7 +296,11 @@ class CompletionTracker(object):
         prompt: list[PromptMessage | ImagePromptMessage],
         completion: CompletionResponse,
         override_trackers: Optional[list[TrackerTypes]] = None,
+        store_prompt_and_response: Optional[bool] = None,
     ):
+        if store_prompt_and_response is None:
+            store_prompt_and_response = self.store_prompt_and_response
+        par = PromptAndResponse(prompt=prompt, response=completion)
         llm_to_track = model.llm
         trackers = override_trackers or self.trackers
         for tracker in trackers:
@@ -256,7 +319,7 @@ class CompletionTracker(object):
                         tracker.cached_input_tokens_by_model[llm_to_track] += completion.cached_input_tokens
                     else:
                         tracker.cached_input_tokens_by_model[llm_to_track] = completion.cached_input_tokens
-                tracker.completions.append(PromptAndResponse(prompt=prompt, response=completion))
+                tracker.completions.append(par)
 
             if isinstance(tracker, DynamoDbResource):
                 self.memory.increment_counter(tracker, f"completions_by_model.{llm_to_track}")
@@ -268,3 +331,11 @@ class CompletionTracker(object):
                     self.memory.increment_counter(
                         tracker, f"cached_input_tokens_by_model.{llm_to_track}", completion.cached_input_tokens
                     )
+
+        if store_prompt_and_response:
+            StoredPromptAndResponse.create_from_prompt_and_response(
+                par,
+                memory=self.memory,
+                media_manager=self.store_prompt_images_media_manager,
+                source_tag=self.store_source_tag,
+            )
