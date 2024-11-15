@@ -317,6 +317,12 @@ def display_completion(
 
     is_stored_par = isinstance(par, StoredPromptAndResponse)
 
+    if is_stored_par:
+        st.metric("Stored Size", par.get_db_item_size())
+        par.resource_config["compress_data"] = False
+        st.metric("Uncompressed Size", par.get_db_item_size())
+        par.resource_config["compress_data"] = True
+
     if st.toggle("Show raw"):
         if is_stored_par:
             st.code(par.model_dump_json(indent=2, exclude=par.get_db_resource_base_keys()))

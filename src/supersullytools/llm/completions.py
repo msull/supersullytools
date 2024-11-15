@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING, Literal, Optional, TypeVar, Union
 
 import boto3
 import openai
-import requests
-from openai.types.chat import ChatCompletion as OpenAiChatCompletion
 from pydantic import AwareDatetime, BaseModel, computed_field
 
 if TYPE_CHECKING:
@@ -277,7 +275,6 @@ class CompletionHandler:
     ) -> "CompletionResponse":
         if not self.enable_openai:
             raise RuntimeError("OpenAI completions disabled!")
-        is_image_prompt = False
         chat_history = []
         debug_print_chat_history = []
         for msg in prompt:
@@ -290,17 +287,13 @@ class CompletionHandler:
                 case PromptMessage():
                     chat_history.append({"role": role, "content": msg.content})
                 case ImagePromptMessage():
-                    is_image_prompt = True
                     content = [{"type": "text", "text": msg.content}]
                     debug_print_chat_history.append({"role": role, "content": msg.content, "include_image": True})
                     for image, image_fmt in zip(msg.images, msg.image_formats):
                         content.append(
                             {
                                 "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/{image_fmt};base64,{image}",
-                                    "detail": "high",
-                                },
+                                "image_url": {"url": f"data:image/{image_fmt};base64,{image}"},
                             }
                         )
                     chat_history.append(
@@ -311,35 +304,16 @@ class CompletionHandler:
                     )
                 case _:
                     raise ValueError("Base prompt type")
-
         started_at = datetime.now(timezone.utc)
-        if is_image_prompt:
-            if not llm.supports_images:
-                raise ValueError("Specified model does not have image prompt support")
-            self.logger.info("Generating Open AI ChatCompletion with Images")
-            if self.debug_output_prompt_and_response:
-                self.logger.debug(f"LLM input:\n{debug_print_chat_history}")
-            # have to use requests for this one
-            headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.openai_client.api_key}"}
 
-            payload = {"model": llm.llm_id, "messages": chat_history, "max_completion_tokens": max_response_tokens}
-            raw_response = requests.post(
-                "https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=300
-            )
-            raw_response.raise_for_status()
-            data = raw_response.json()
-            if self.debug_output_prompt_and_response:
-                self.logger.debug(f"LLM response:\n{data}")
-            openai_response = OpenAiChatCompletion.model_validate(data)
-        else:
-            self.logger.info("Generating Open AI ChatCompletion")
-            if self.debug_output_prompt_and_response:
-                self.logger.debug(f"LLM input:\n{chat_history}")
-            openai_response = self.openai_client.chat.completions.create(
-                model=llm.llm_id, messages=chat_history, max_completion_tokens=max_response_tokens
-            )
-            if self.debug_output_prompt_and_response:
-                self.logger.debug(f"LLM response:\n{openai_response}")
+        self.logger.info("Generating Open AI ChatCompletion")
+        if self.debug_output_prompt_and_response:
+            self.logger.debug(f"LLM input:\n{chat_history}")
+        openai_response = self.openai_client.chat.completions.create(
+            model=llm.llm_id, messages=chat_history, max_completion_tokens=max_response_tokens
+        )
+        if self.debug_output_prompt_and_response:
+            self.logger.debug(f"LLM response:\n{openai_response}")
         finished_at = datetime.now(timezone.utc)
 
         return CompletionResponse(
