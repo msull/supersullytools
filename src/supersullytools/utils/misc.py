@@ -61,3 +61,13 @@ def format_validation_error(error: "ValidationError") -> str:
         messages.append(f"- **Location:** `{loc}`\n  **Message:** {msg}\n  **Type:** `{param}`\n")
 
     return "\n".join(messages)
+
+
+def strip_backticks_and_content_type(input_string):
+    # Define a regex pattern to match backticks and content type indicator
+    pattern = r"```[a-zA-Z]*\n|```"
+
+    # Remove the matching patterns from the input string
+    stripped_string = re.sub(pattern, "", input_string)
+
+    return stripped_string
