@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.2.2] 2024-11-27
+
+### Added
+
+* Introduced `simple_fixed_container` function in `misc.py` for creating a fixed container with CSS styling in
+  Streamlit.
+* Added `PlantUML` integration in `utils/misc.py` to render UML diagrams from PlantUML markup.
+
+### Changed
+
+* Refactored message content handling in `agent.py` to include user message and system context in a structured format.
+* Removed `completion_tracker.fixup_trackers()` call from `AI Chat.py` to streamline agent initialization.
+
 ## [10.2.1] 2024-11-22
 
 ### Added

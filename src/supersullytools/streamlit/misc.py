@@ -45,3 +45,40 @@ def display_flash_msgs(
         for msg in toast_msgs:
             st.toast(msg)
         st.session_state[flash_toasts_session_session_key] = []
+
+
+# Simplified CSS for the fixed container
+FIXED_CONTAINER_CSS = """
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.fixed-container-simple_fixed_container):not(:has(div.not-fixed-container)){
+    background-color: transparent;
+    position: fixed;
+    width: inherit;
+    background-color: inherit;
+    top: 100;
+    z-index: 999;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.fixed-container-simple_fixed_container):not(:has(div.not-fixed-container)) div[data-testid="stVerticalBlock"]:has(div.fixed-container-simple_fixed_container):not(:has(div.not-fixed-container)) > div[data-testid="element-container"] {
+    display: none;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.not-fixed-container):not(:has(div[class^='fixed-container-'])) {
+    display: none;
+}
+""".strip()
+
+
+def simple_fixed_container():
+    key = "simple_fixed_container"
+    fixed_container = st.container()
+    non_fixed_container = st.container()
+
+    css = FIXED_CONTAINER_CSS
+    with fixed_container:
+        st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+        st.markdown(f"<div class='fixed-container-{key}'></div>", unsafe_allow_html=True)
+    with non_fixed_container:
+        st.markdown("<div class='not-fixed-container'></div>", unsafe_allow_html=True)
+
+    with fixed_container:
+        return st.container(border=False)

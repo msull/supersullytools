@@ -509,7 +509,6 @@ I am ready for user messages.
         ]
 
         final_message: PromptMessage | ImagePromptMessage = self.chat_history[-1].model_copy()
-        msg_content = final_message.content
 
         ephemeral_context = {
             "current_local_time": now_fmt,
@@ -517,8 +516,9 @@ I am ready for user messages.
         }
         system_context = {**self._llm_context, **ephemeral_context}
         system_context_str = json.dumps(system_context, default=str, indent=2)
-        msg_content += (
-            f"\n\n<system_context>This section provides data injected automatically by the system at runtime."
+        msg_content = (
+            f"<message_from_user>\n{final_message.content}\n</message_from_user>"
+            f"\n<system_context>This section provides data injected automatically by the system at runtime."
             f"\n{system_context_str}"
             f"\n</system_context>"
         )

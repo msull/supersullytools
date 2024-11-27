@@ -44,8 +44,6 @@ def main():
     agent = _agent()
     agent_utils = ChatAgentUtils(agent)
 
-    agent.completion_handler.completion_tracker.fixup_trackers()
-
     if "image_key" not in st.session_state:
         st.session_state.image_key = 1
         st.session_state.upload_images = []
