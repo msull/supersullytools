@@ -1,1 +1,1 @@
-package_version = "10.2.1"
+package_version = "10.2.2"
