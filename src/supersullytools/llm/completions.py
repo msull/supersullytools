@@ -165,7 +165,6 @@ class CompletionHandler:
                 response = self._get_bedrock_completion(model, prompt, max_response_tokens)
             case _:
                 raise ValueError(model)
-
         try:
             if self.completion_tracker:
                 self.completion_tracker.track_completion(model, prompt, response)
@@ -175,7 +174,9 @@ class CompletionHandler:
         try:
             if extra_trackers:
                 if self.completion_tracker:
-                    self.completion_tracker.track_completion(model, prompt, response, override_trackers=extra_trackers)
+                    self.completion_tracker.track_completion(
+                        model, prompt, response, override_trackers=extra_trackers, store_prompt_and_response=False
+                    )
                 else:
                     self.logger.warning("Extra trackers provided but no completion tracker configured!")
         except Exception:
