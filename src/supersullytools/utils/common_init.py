@@ -48,8 +48,13 @@ def get_standard_completion_handler(
         trackers.append(GlobalUsageTracker.ensure_exists(memory))
         trackers.append(DailyUsageTracking.get_for_today(memory))
         trackers.extend(TopicUsageTracking.get_for_topic(memory, x) for x in (topics or []))
+        if os.getenv("DISABLE_COMPLETION_TRACKING_RESPONSE_STORAGE"):
+            store_prompt_and_response = False
+        else:
+            store_prompt_and_response = True
     else:
         memory = None
+        store_prompt_and_response = False
 
     if os.getenv("COMPLETION_TRACKING_BUCKET_NAME"):
         media_manager = get_standard_completion_media_manager(logger)
@@ -65,7 +70,7 @@ def get_standard_completion_handler(
         completion_tracker=CompletionTracker(
             memory=memory,
             trackers=trackers,
-            store_prompt_and_response=bool(memory),
+            store_prompt_and_response=store_prompt_and_response,
             store_prompt_images_media_manager=media_manager,
             store_source_tag=store_source_tag,
             logger=logger,
