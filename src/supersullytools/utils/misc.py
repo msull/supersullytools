@@ -4,8 +4,6 @@ from random import choices
 from string import ascii_lowercase
 from typing import TYPE_CHECKING
 
-from plantuml import PlantUML
-
 if TYPE_CHECKING:
     from pandas import DataFrame
     from pydantic import ValidationError
@@ -83,17 +81,3 @@ def is_uml_diagram(input_string):
     # Define regex patterns for UML diagram delimiters and key elements
     uml_delimiters_pattern = r"^@startuml.*@enduml$"
     return re.search(uml_delimiters_pattern, input_string, re.DOTALL)
-
-
-def render_plantuml(plantuml_text):
-    """
-    Render PlantUML text into an image.
-
-    Parameters:
-    - plantuml_text (str): The PlantUML markup to render.
-
-    Returns:
-    - bytes: The image data.
-    """
-    url = PlantUML(url="http://www.plantuml.com/plantuml/img/")
-    return url.get_url(plantuml_text)
