@@ -3,14 +3,13 @@ from datetime import date, datetime
 import streamlit as st
 
 # Import your GoogleCalendarDataAccess class
-# Replace 'supersullytools.gcalendar_access' with the actual path if different.
 from supersullytools.gcalendar_access import CalendarDataAccessError, GoogleCalendarDataAccess
 
 # Initialize the data access object
 # Update the args below to match your environment (files, default calendar, timezone, etc.)
 calendar_dao = GoogleCalendarDataAccess(
-    credentials_file="credentials.json",
-    token_file="token.json",
+    credentials_file="local/credentials.json",
+    token_file="local/token.json",
     default_calendar_id="primary",
     fallback_timezone="America/Los_Angeles",
 )
