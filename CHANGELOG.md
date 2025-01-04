@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [12.1.0] 2025-01-03
+
+### Added
+
+* Introduced `GoogleCalendarDataAccess` class for Google Calendar API interactions.
+
 ## [12.0.0] 2025-01-03
 
 ### Added
@@ -13,9 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-* Replaced `smart_open` with native `boto3` S3 client for file operations, enhancing performance and reliability.
-* Refactored upload and delete methods to utilize `boto3` for S3 interactions, ensuring consistency and efficiency.
-* Improved logging for S3 operations, providing better insights and error handling.
+* Replaced `smart_open` with native `boto3` S3 client for file operations.
+* Refactored upload and delete methods to utilize `boto3` for S3 interactions.
+* Improved logging for S3 operations.
 
 ### Improved
 
