@@ -187,7 +187,6 @@ class MediaManager:
 
         delete_media(media_id: str) -> None:
             Deletes a media file and its preview from S3 and removes the associated metadata from DynamoDB.
-            Handles idempotent deletion by checking for the existence of files before attempting to delete them.
 
         retrieve_metadata(media_id: str) -> StoredMedia:
             Retrieves the metadata for a given media ID from DynamoDB.
@@ -196,10 +195,13 @@ class MediaManager:
             Retrieves both the metadata and the content of a media file from S3 and DynamoDB.
 
         retrieve_media_contents(media_id: str) -> IO[bytes]:
-            Retrieves the content of a media file from S3. Automatically decompresses the content if it was stored using gzip.
+            Retrieves the content of a media file from S3.
 
         retrieve_media_preview(media_id: str) -> bytes:
             Retrieves the preview image of a media file from S3.
+
+        generate_presigned_download_url(media_id: str, expiration: int = 3600) -> str:
+            Generates a presigned download URL for the specified media file.
     """
 
     def __init__(self, bucket_name: str, logger, dynamodb_memory, global_prefix: str = ""):
@@ -207,6 +209,7 @@ class MediaManager:
         self.logger = logger
         self.dynamodb_memory: DynamoDbMemory = dynamodb_memory
         self.global_prefix = global_prefix.rstrip("/") + "/" if global_prefix else ""
+        self.s3_client = boto3.client("s3")
 
     def generate_preview(self, file_obj: IOBase, media_type: MediaType) -> bytes:
         try:
@@ -239,7 +242,6 @@ class MediaManager:
 
         file_obj.seek(0)
         data = file_obj.read()
-        # Encrypt a message
         nonce = secrets.token_bytes(12)  # GCM mode needs 12 fresh bytes every time
         ciphertext = nonce + AESGCM(encryption_key).encrypt(nonce, data, b"")
         encrypted_io = BytesIO(ciphertext)
@@ -267,8 +269,6 @@ class MediaManager:
         encryption_key: Optional[bytes] = None,
         encrypt_preview: bool = True,
     ) -> StoredMedia:
-        from smart_open import open as smart_open
-
         try:
             media_type = MediaType[media_type]
         except KeyError:
@@ -276,12 +276,14 @@ class MediaManager:
 
         upload_id = date_id()
         prefixed_file_name = "/".join([self.global_prefix, upload_id]).replace("//", "/")
-        s3_uri = f"s3://{self.bucket_name}/{prefixed_file_name}"
 
         try:
-            file_obj.seek(0, 2)  # Move to the end of the file to get its size
+            # Get raw file size
+            file_obj.seek(0, 2)
             raw_file_size_bytes = file_obj.tell()
-            file_obj.seek(0)  # Reset the file pointer to the beginning
+            file_obj.seek(0)
+
+            # GZIP if requested
             if use_gzip:
                 compressed_io = BytesIO()
                 with gzip.GzipFile(fileobj=compressed_io, mode="wb") as gz:
@@ -291,40 +293,46 @@ class MediaManager:
             else:
                 write_obj = file_obj
 
+            # Encrypt if requested
             encrypted = False
             if encryption_key:
                 encrypted = True
                 write_obj = self._encrypt_contents(write_obj, encryption_key)
 
-            write_obj.seek(0, 2)  # Move to the end of the file to get its size
+            # Calculate final storage size after compression/encryption
+            write_obj.seek(0, 2)
             file_size_bytes = write_obj.tell()
-            write_obj.seek(0)  # Reset the file pointer to the beginning
+            write_obj.seek(0)
 
-            with smart_open(s3_uri, "wb") as s3_file:
-                s3_file.write(write_obj.read())
+            # Upload the file to S3
+            self.s3_client.upload_fileobj(write_obj, self.bucket_name, prefixed_file_name)
 
-            self.logger.info(f"Successfully uploaded {source_file_name} to {s3_uri}")
+            self.logger.info(
+                f"Successfully uploaded {source_file_name} to s3://{self.bucket_name}/{prefixed_file_name}"
+            )
+
             # Generate and upload preview
             file_obj.seek(0)
             preview_io = BytesIO(self.generate_preview(file_obj, media_type))
-            preview_io.seek(0, 2)  # Move to the end of the file to get its size
+
+            preview_io.seek(0, 2)
             raw_preview_size_bytes = preview_io.tell()
-            preview_io.seek(0)  # Reset the file pointer to the beginning
+            preview_io.seek(0)
 
             preview_encrypted = False
             if encryption_key and encrypt_preview:
                 preview_encrypted = True
                 preview_io = self._encrypt_contents(preview_io, encryption_key)
 
-            preview_io.seek(0, 2)  # Move to the end of the file to get its size
+            preview_io.seek(0, 2)
             preview_file_size_bytes = preview_io.tell()
-            preview_io.seek(0)  # Reset the file pointer to the beginning
+            preview_io.seek(0)
 
-            preview_s3_uri = f"{s3_uri}_preview"
-            with smart_open(preview_s3_uri, "wb") as s3_preview_file:
-                s3_preview_file.write(preview_io.read())
+            self.s3_client.upload_fileobj(preview_io, self.bucket_name, f"{prefixed_file_name}_preview")
 
-            self.logger.info(f"Successfully uploaded preview for {source_file_name} to {preview_s3_uri}")
+            self.logger.info(
+                f"Successfully uploaded preview for {source_file_name} to s3://{self.bucket_name}/{prefixed_file_name}_preview"
+            )
 
             # Create and store the media metadata
             metadata = self.dynamodb_memory.create_new(
@@ -344,35 +352,36 @@ class MediaManager:
             )
             return metadata
         except Exception as e:
-            self.logger.exception(f"Failed to upload {source_file_name} to {s3_uri}: {str(e)}")
+            self.logger.exception(
+                f"Failed to upload {source_file_name} to s3://{self.bucket_name}/{prefixed_file_name}: {str(e)}"
+            )
             raise
 
     def delete_media(self, media_id: str) -> None:
         metadata = self.retrieve_metadata(media_id)  # Ensure the media exists
         prefixed_file_name = "/".join([self.global_prefix, media_id]).replace("//", "/")
-        s3_uri = f"{self.bucket_name}/{prefixed_file_name}"
-        preview_s3_uri = f"{s3_uri}_preview"
-
-        s3_client = boto3.client("s3")
 
         try:
             # Idempotent deletion of the main file from S3
             try:
-                s3_client.delete_object(Bucket=self.bucket_name, Key=prefixed_file_name)
-                self.logger.info(f"Successfully deleted {s3_uri}")
-            except s3_client.exceptions.ClientError as e:
+                self.s3_client.delete_object(Bucket=self.bucket_name, Key=prefixed_file_name)
+                self.logger.info(f"Successfully deleted s3://{self.bucket_name}/{prefixed_file_name}")
+            except self.s3_client.exceptions.ClientError as e:
                 if e.response["Error"]["Code"] == "NoSuchKey":
-                    self.logger.info(f"{s3_uri} already deleted or does not exist")
+                    self.logger.info(
+                        f"s3://{self.bucket_name}/{prefixed_file_name} does not exist or was already deleted"
+                    )
                 else:
                     raise
 
             # Idempotent deletion of the preview file from S3
+            preview_key = f"{prefixed_file_name}_preview"
             try:
-                s3_client.delete_object(Bucket=self.bucket_name, Key=f"{prefixed_file_name}_preview")
-                self.logger.info(f"Successfully deleted {preview_s3_uri}")
-            except s3_client.exceptions.ClientError as e:
+                self.s3_client.delete_object(Bucket=self.bucket_name, Key=preview_key)
+                self.logger.info(f"Successfully deleted s3://{self.bucket_name}/{preview_key}")
+            except self.s3_client.exceptions.ClientError as e:
                 if e.response["Error"]["Code"] == "NoSuchKey":
-                    self.logger.info(f"{preview_s3_uri} already deleted or does not exist")
+                    self.logger.info(f"s3://{self.bucket_name}/{preview_key} does not exist or was already deleted")
                 else:
                     raise
 
@@ -402,26 +411,24 @@ class MediaManager:
     def retrieve_media_contents(
         self, media_id: str, encryption_key: Optional[bytes] = None, metadata: Optional[StoredMedia] = None
     ) -> IO[bytes]:
-        from smart_open import open as smart_open
-
         metadata = metadata or self.retrieve_metadata(media_id)
         prefixed_file_name = "/".join([self.global_prefix, media_id]).replace("//", "/")
-        s3_uri = f"s3://{self.bucket_name}/{prefixed_file_name}"
 
         if metadata.content_encrypted and not encryption_key:
-            raise ValueError("Content encrypted; must supply encryption key")
+            raise ValueError("Content is encrypted; you must supply an encryption key.")
 
         try:
-            with smart_open(s3_uri, "rb") as s3_file:
-                contents = s3_file.read()
-
+            s3_response = self.s3_client.get_object(Bucket=self.bucket_name, Key=prefixed_file_name)
+            contents = s3_response["Body"].read()
             self.logger.info(f"Successfully retrieved contents for media ID {media_id}")
 
             output_data = BytesIO(contents)
 
+            # Decrypt if needed
             if metadata.content_encrypted:
                 output_data = self._decrypt_contents(file_obj=output_data, encryption_key=encryption_key)
 
+            # Decompress if gzipped
             if metadata.content_gzipped:
                 decompressed_io = BytesIO()
                 with gzip.GzipFile(fileobj=output_data, mode="rb") as gz:
@@ -436,25 +443,50 @@ class MediaManager:
             raise
 
     def retrieve_media_preview(self, media_id: str, encryption_key: Optional[bytes] = None):
-        # note: for speed, we do not pull the metadata and check if the preview is encrypted and
-        # raise an error if the key isn't supplied (which is done when retrieving contents)
-        # if the preview is encrypted and no key is supplied, the preview image will just be busted
-        from smart_open import open as smart_open
-
+        # If the preview is encrypted but no key is supplied, the preview data will fail to decrypt
+        # or yield a corrupted preview. You may want to handle that case specifically.
         prefixed_file_name = "/".join([self.global_prefix, media_id]).replace("//", "/")
-        s3_uri = f"s3://{self.bucket_name}/{prefixed_file_name}_preview"
+        preview_key = f"{prefixed_file_name}_preview"
 
         try:
-            with smart_open(s3_uri, "rb") as s3_file:
-                contents = s3_file.read()
+            s3_response = self.s3_client.get_object(Bucket=self.bucket_name, Key=preview_key)
+            contents = s3_response["Body"].read()
             self.logger.info(f"Successfully retrieved preview contents for media ID {media_id}")
+
             if encryption_key:
-                contents = self._decrypt_contents(file_obj=BytesIO(contents), encryption_key=encryption_key).read()
+                # Attempt to decrypt if the preview is encrypted
+                # (No explicit metadata check here, but you could retrieve it if needed)
+                decrypted = self._decrypt_contents(BytesIO(contents), encryption_key)
+                return decrypted.read()
+
             return contents
         except Exception as e:
             self.logger.exception(f"Failed to retrieve preview contents for media ID {media_id}: {str(e)}")
             return generate_no_preview_available()
-            # raise
+
+    def generate_presigned_download_url(self, media_id: str, expiration: int = 3600, preview_file: bool = False) -> str:
+        """
+        Generate a presigned URL allowing anyone with the URL to download the media file from S3.
+        :param media_id: The ID of the media file.
+        :param expiration: Time in seconds for the presigned URL to remain valid.
+        :param preview_file: Defaults False; when True will generate a link for the preview image instead
+            of the media itself.
+        :return: A presigned URL string.
+        """
+        prefixed_file_name = "/".join([self.global_prefix, media_id]).replace("//", "/")
+        preview_key = f"{prefixed_file_name}_preview"
+        final_key = preview_key if preview_file else prefixed_file_name
+        try:
+            url = self.s3_client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self.bucket_name, "Key": final_key},
+                ExpiresIn=expiration,
+            )
+            self.logger.info(f"Generated presigned URL for media ID {media_id} with {expiration=} {preview_file=}")
+            return url
+        except Exception as e:
+            self.logger.exception(f"Failed to generate presigned URL for media ID {media_id}: {str(e)}")
+            raise
 
 
 def resize_image(image, max_size: (int, int) = (200, 200)):
@@ -464,14 +496,15 @@ def resize_image(image, max_size: (int, int) = (200, 200)):
     return image
 
 
-# Helper functions
 def generate_image_thumbnail(file_obj: IOBase, size=(200, 200)) -> bytes:
     from PIL import Image
 
     image = Image.open(file_obj)
     image.thumbnail(size)
     thumb_io = BytesIO()
-    image.save(thumb_io, format=image.format)
+    # Use a default format (e.g., PNG) if image.format is None
+    fmt = image.format if image.format else "PNG"
+    image.save(thumb_io, format=fmt)
     thumb_io.seek(0)
     return thumb_io.read()
 
@@ -486,7 +519,6 @@ def generate_audio_waveform(file_obj: IOBase) -> bytes:
     except ImportError:
         return generate_no_preview_available()
     try:
-        # Load the audio file
         file_obj.seek(0)
         try:
             audio = AudioSegment.from_file(file_obj)
@@ -496,15 +528,12 @@ def generate_audio_waveform(file_obj: IOBase) -> bytes:
             else:
                 raise
 
-        # Get the raw audio data as an array of samples
         samples = audio.get_array_of_samples()
 
-        # Plot the waveform
         plt.figure(figsize=(10, 2))
         plt.plot(samples)
         plt.axis("off")
 
-        # Save the plot to a BytesIO object
         waveform_io = BytesIO()
         plt.savefig(waveform_io, format="png")
         plt.close()
@@ -546,38 +575,32 @@ def generate_pdf_preview(file_obj: IOBase) -> bytes:
 
 def generate_video_thumbnail(file_obj: IOBase) -> bytes:
     from PIL import Image
-    from smart_open import open as smart_open
 
     file_obj.seek(0)
     temp_file = tempfile.NamedTemporaryFile(delete=False)
     frame_file = None
     try:
         temp_file.write(file_obj.read())
-        temp_file.flush()  # Ensure all data is written to disk
+        temp_file.flush()
         temp_file.close()
 
-        # Verify the file is correctly written
         if not os.path.exists(temp_file.name):
             raise Exception(f"Temporary file {temp_file.name} was not created successfully.")
 
-        # Prepare the output file for the thumbnail
         frame_file = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
         frame_file.close()
 
-        # Run ffmpeg to extract a frame
         result = subprocess.run(
             ["ffmpeg", "-y", "-i", temp_file.name, "-ss", "00:00:01.000", "-vframes", "1", frame_file.name],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
 
-        # Check if ffmpeg succeeded
         if result.returncode != 0:
             error_message = result.stderr.decode("utf-8")
             raise Exception(f"Failed to generate video thumbnail: {error_message}")
 
-        # Load the frame and convert to bytes
-        with smart_open(frame_file.name, "rb") as img_file:
+        with open(frame_file.name, "rb") as img_file:
             image = Image.open(img_file)
             image = resize_image(image, max_size=(200, 200))
             thumbnail_io = BytesIO()
@@ -585,7 +608,6 @@ def generate_video_thumbnail(file_obj: IOBase) -> bytes:
             thumbnail_io.seek(0)
             return thumbnail_io.read()
     finally:
-        # Cleanup temporary files
         os.remove(temp_file.name)
         if frame_file:
             os.remove(frame_file.name)
@@ -598,15 +620,12 @@ def generate_no_preview_available() -> bytes:
 def generate_text_image(text: str, width=200, height=200, font_size=10) -> bytes:
     from PIL import Image, ImageDraw, ImageFont
 
-    # Generate a "No Preview Available" image
     image = Image.new("RGB", (width, height), color=(255, 255, 255))
     draw = ImageDraw.Draw(image)
     try:
-        # Use a TrueType font if available
         font = ImageFont.truetype("arial.ttf", size=font_size)
     except IOError:
-        # Otherwise, use the default bitmap font
-        font = ImageFont.load_default(size=font_size)
+        font = ImageFont.load_default()
 
     text_bbox = draw.textbbox((0, 0), text, font=font)
     text_width = text_bbox[2] - text_bbox[0]

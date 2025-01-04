@@ -275,6 +275,27 @@ if st.button("Retrieve Content"):
     except Exception as e:
         st.error(f"Failed to retrieve content: {str(e)}")
 
+# Get Download Link
+st.header("Get Download Link")
+media_id_preview = st.text_input("Enter media ID to retrieve download link")
+if st.button("Retrieve Download Link"):
+    try:
+        download_link = media_manager.generate_presigned_download_url(media_id_preview)
+        st.write(download_link)
+    except Exception as e:
+        st.error(f"Failed to retrieve preview: {str(e)}")
+
+# Get Download Link
+st.header("Get Download Link for Preview")
+media_id_preview = st.text_input("Enter media ID to retrieve preview download link")
+if st.button("Retrieve Preview Download Link"):
+    try:
+        download_link = media_manager.generate_presigned_download_url(media_id_preview, preview_file=True)
+        st.image(download_link)
+        st.write(download_link)
+    except Exception as e:
+        st.error(f"Failed to retrieve preview: {str(e)}")
+
 # Retrieve preview section
 st.header("Retrieve Preview")
 media_id_preview = st.text_input("Enter media ID to retrieve preview")

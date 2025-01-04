@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [12.0.0] 2025-01-03
+
+### Added
+
+* Implemented `generate_presigned_download_url` for media and preview files to facilitate secure and temporary access to S3 objects.
+
+### Changed
+
+* Replaced `smart_open` with native `boto3` S3 client for file operations, enhancing performance and reliability.
+* Refactored upload and delete methods to utilize `boto3` for S3 interactions, ensuring consistency and efficiency.
+* Improved logging for S3 operations, providing better insights and error handling.
+
+### Improved
+
+* Enhanced image and video thumbnail generation with improved error handling, ensuring robustness and reliability.
+
+### Removed
+
+* Removed redundant comments and streamlined code for clarity, improving maintainability and readability.
+
 ## [11.0.1] 2024-12-04
 
 ### Fixed
