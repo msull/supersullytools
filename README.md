@@ -1,7 +1,7 @@
 SuperSully Tools
 ================
 
-**Latest Version:** 11.0.1
+**Latest Version:** 12.0.0
 
 **SupersullyTools** is a Python package that brings together a suite of utilities and helpers across several domains of
 software development; this is my personal prototyping toolkit.
