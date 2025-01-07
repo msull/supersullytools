@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [12.3.0] 2025-01-07
+
+### Added
+
+* Add reminder template parsing and tests
+    - Implement `parse_template` function to handle date-based placeholders in reminder strings.
+    - Support placeholders: `{current_year}`, `{offset_year(N)}`, `{age(...)}`, `{years_since(...)}`,
+      and `{days_until(...)}`.
+    - Include helper functions for date calculations: `compute_days_until`, `parse_date_str`, `compute_age`,
+      and `compute_years_since`.
+
 ## [12.2.0] 2025-01-06
 
 ### Added
@@ -21,7 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-* Implemented `generate_presigned_download_url` for media and preview files to facilitate secure and temporary access to S3 objects.
+* Implemented `generate_presigned_download_url` for media and preview files to facilitate secure and temporary access to
+  S3 objects.
 
 ### Changed
 
@@ -42,7 +54,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 * Removed unused PlantUML import.
-
 
 ## [11.0.0] 2024-12-04
 
