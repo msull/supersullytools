@@ -104,3 +104,27 @@ if st.button("Get Events"):
                 st.write("---")
     except CalendarDataAccessError as e:
         st.error(f"Error getting events: {e}")
+
+st.subheader("4. Add all day event")
+
+with st.form("add_all_day_event_form"):
+    event_summary = st.text_input("Event Summary", "Sample Event")
+
+    event_date_input = st.date_input("Event Date", date.today())
+
+    event_description = st.text_area("Description", "Discuss holiday plans")
+    event_location = st.text_input("Location", "Somewhere nice...")
+
+    submitted = st.form_submit_button("Add Event")
+    if submitted:
+        # Attempt to add the event
+        try:
+            created_event = calendar_dao.add_all_day_event(
+                summary=event_summary,
+                date=event_date_input,
+                description=event_description,
+                location=event_location,
+            )
+            st.success(f"Event created: {created_event.get('htmlLink')}")
+        except CalendarDataAccessError as e:
+            st.error(f"Error adding event: {e}")

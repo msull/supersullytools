@@ -129,8 +129,6 @@ class GoogleCalendarDataAccess:
             return calendar.get("timeZone", self.fallback_timezone)
         except HttpError as error:
             logger.error(f"An error occurred while fetching calendar info: {error}")
-            # Return fallback timezone or raise, depending on your preference
-            # raise CalendarDataAccessError("Unable to fetch calendar timezone.") from error
             return self.fallback_timezone
 
     def list_calendars(self) -> List[Dict[str, Any]]:
@@ -176,7 +174,7 @@ class GoogleCalendarDataAccess:
         if calendar_id is None:
             calendar_id = self.default_calendar_id
 
-            # 1) Figure out the calendar’s actual timezone
+        # 1) Figure out the calendar’s actual timezone
         cal_tz_name = self._get_calendar_timezone(calendar_id)
         cal_tz = ZoneInfo(cal_tz_name)
 
@@ -200,7 +198,7 @@ class GoogleCalendarDataAccess:
     ) -> List[Dict[str, Any]]:
         """
         Fetch events in the inclusive range [start_datetime, end_datetime].
-        The times should be fully offset-aware datetimes (or RFC 3339 strings).
+        The times should be fully offset-aware datetimes (or RFC3339 strings).
 
         Args:
             start_datetime: Start of the range, as a datetime with tz info or an RFC3339 string.
@@ -216,7 +214,7 @@ class GoogleCalendarDataAccess:
         if calendar_id is None:
             calendar_id = self.default_calendar_id
 
-        # Get the calendar timezone for display (optional if you want Google to interpret times in that zone)
+        # Get the calendar timezone (optional for listing events, but can be useful)
         cal_tz = self._get_calendar_timezone(calendar_id)
 
         # Convert datetimes to RFC3339 if needed
@@ -259,7 +257,7 @@ class GoogleCalendarDataAccess:
         calendar_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Add a basic event to the specified (or default) calendar.
+        Add a time-based event to the specified (or default) calendar.
 
         Args:
             summary: Event title or summary.
@@ -304,6 +302,63 @@ class GoogleCalendarDataAccess:
             logger.error(f"An error occurred while adding the event: {error}")
             raise CalendarDataAccessError("Unable to add event.") from error
 
+    def add_all_day_event(
+        self,
+        summary: str,
+        date: Union[datetime.date, str],
+        description: Optional[str] = None,
+        location: Optional[str] = None,
+        calendar_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Add a single-day, all-day event to the specified (or default) calendar.
+        For all-day events, we use 'date' instead of 'dateTime' and omit time zones.
+
+        Args:
+            summary: Event title or summary.
+            date: The local date of the all-day event (datetime.date or 'YYYY-MM-DD' string).
+            description: Optional text for event description.
+            location: Optional event location (string).
+            calendar_id: Target calendar ID (defaults to default_calendar_id).
+
+        Returns:
+            The event data returned by Google Calendar API.
+
+        Raises:
+            CalendarDataAccessError: If the API call fails.
+        """
+        if calendar_id is None:
+            calendar_id = self.default_calendar_id
+
+        if isinstance(date, datetime.date):
+            date_str = date.strftime("%Y-%m-%d")
+        else:
+            date_str = date  # assume it's already a YYYY-MM-DD string
+
+        # According to Google Calendar, the `end.date` must be the day after for single-day all-day events.
+        # For example, if date is 2025-01-06, then end.date = 2025-01-07
+        dt = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+        end_dt = dt + datetime.timedelta(days=1)
+        end_date_str = end_dt.strftime("%Y-%m-%d")
+
+        event_body = {
+            "summary": summary,
+            "start": {"date": date_str},  # no timeZone
+            "end": {"date": end_date_str},  # no timeZone
+        }
+        if description:
+            event_body["description"] = description
+        if location:
+            event_body["location"] = location
+
+        try:
+            created_event = self.service.events().insert(calendarId=calendar_id, body=event_body).execute()
+            logger.info(f"All-day event created: {created_event.get('htmlLink')}")
+            return created_event
+        except HttpError as error:
+            logger.error(f"An error occurred while adding the all-day event: {error}")
+            raise CalendarDataAccessError("Unable to add all-day event.") from error
+
     def update_event(
         self,
         event_id: str,
@@ -347,6 +402,10 @@ class GoogleCalendarDataAccess:
         # Apply changes
         if summary is not None:
             event["summary"] = summary
+
+        # If we received dateTimes, update them (assuming the existing event is a time-based event).
+        # If you plan on converting events to/from all-day to time-based, you'll also need to adjust
+        # the 'start'/'end' to use 'date' or 'dateTime' accordingly.
         if start_datetime is not None:
             if isinstance(start_datetime, datetime.datetime):
                 start_datetime = start_datetime.isoformat()
@@ -357,6 +416,7 @@ class GoogleCalendarDataAccess:
                 end_datetime = end_datetime.isoformat()
             event["end"]["dateTime"] = end_datetime
             event["end"]["timeZone"] = cal_tz
+
         if description is not None:
             event["description"] = description
         if location is not None:
@@ -409,33 +469,14 @@ if __name__ == "__main__":
         fallback_timezone="America/Los_Angeles",
     )
 
-    # Example: List all calendars
+    # Example: Create a single-day, all-day event on 2025-01-06
+    # (This will appear in Google Calendar as an "all day" event on that date.)
     try:
-        all_calendars = calendar_dao.list_calendars()
-        for cal in all_calendars:
-            logger.info(f"Calendar: {cal.get('summary')} | ID: {cal.get('id')} | Timezone: {cal.get('timeZone')}")
+        all_day_event = calendar_dao.add_all_day_event(
+            summary="My All-Day Event",
+            date="2025-01-06",
+            description="This is a single-day, all-day event example",
+        )
+        logger.info(f"All-day event created with ID: {all_day_event.get('id')}")
     except CalendarDataAccessError as e:
-        logger.error(f"Could not list calendars: {e}")
-
-    # Example: Add an event (commented out by default)
-    # start = datetime.datetime(2024, 12, 25, 10, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
-    # end = datetime.datetime(2024, 12, 25, 11, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
-    # try:
-    #     event = calendar_dao.add_event(
-    #         summary="Christmas Meeting",
-    #         start_datetime=start,
-    #         end_datetime=end,
-    #         description="Discuss holiday plans",
-    #     )
-    #     logger.info(f"Event created with ID: {event.get('id')}")
-    # except CalendarDataAccessError as e:
-    #     logger.error(f"Could not add event: {e}")
-
-    # Example: Get events on a specific date
-    # try:
-    #     events = calendar_dao.get_events_on_date(datetime.date(2024, 12, 25))
-    #     logger.info(f"Found {len(events)} events on 2024-12-25")
-    #     for e in events:
-    #         logger.info(f"{e.get('summary')} | {e.get('start').get('dateTime')} | {e.get('id')}")
-    # except CalendarDataAccessError as e:
-    #     logger.error(f"Could not get events: {e}")
+        logger.error(f"Could not create all-day event: {e}")
