@@ -4,6 +4,7 @@ import streamlit as st
 from logzero import logger
 
 from supersullytools.llm.agent import ChatAgent
+from supersullytools.llm.agent_tools.demo_tools import get_demo_tools
 from supersullytools.llm.agent_tools.duckduckgo import get_ddg_tools
 from supersullytools.llm.trackers import SessionUsageTracking, TopicUsageTracking
 from supersullytools.streamlit.chat_agent_utils import ChatAgentUtils
@@ -17,7 +18,7 @@ def get_session_usage_tracker() -> SessionUsageTracking:
 
 @st.cache_resource
 def get_agent() -> ChatAgent:
-    tool_profiles = {"all": [] + get_ddg_tools()}
+    tool_profiles = {"all": [] + get_ddg_tools() + get_demo_tools()}
     return ChatAgent(
         agent_description="You are a helpful assistant.",
         logger=logger,
@@ -28,6 +29,7 @@ def get_agent() -> ChatAgent:
             topics=["AIChat"],
         ),
         tool_profiles=tool_profiles,
+        require_reason=False,
     )
 
 

@@ -24,23 +24,43 @@ class NoParams(BaseModel):
     pass
 
 
+class AgentToolResponse(BaseModel):
+    output_content: dict | list | str | PydanticModel
+    replace_input: Optional[str] = None
+
+
+class InvokeToolOutput(BaseModel):
+    output_content: str
+    replace_input: Optional[str] = None
+
+
 class AgentTool(BaseModel):
     name: str
     description: Optional[str] = None
     params_model: Type[PydanticModel]
-    mechanism: Callable[[PydanticModel], dict | list | str | PydanticModel]
+    mechanism: Callable[[PydanticModel], dict | list | str | AgentToolResponse | PydanticModel]
     safe_tool: bool = False
 
-    def invoke_tool(self, params_dict: dict) -> str:
+    def invoke_tool(self, params_dict: dict) -> InvokeToolOutput:
         params = self.params_model.model_validate(params_dict)
         result = self.mechanism(params)
-        match result:
+
+        if isinstance(result, AgentToolResponse):
+            content = result.output_content
+            replace_input = result.replace_input
+        else:
+            content = result
+            replace_input = None
+
+        # convert content to a str
+        match content:
             case BaseModel():
-                return result.model_dump_json()
+                output_content = content.model_dump_json()
             case str():
-                return result
+                output_content = content
             case _:
-                return json.dumps(result, default=str)
+                output_content = json.dumps(content, default=str)
+        return InvokeToolOutput(output_content=output_content, replace_input=replace_input)
 
 
 class StrEnum(str, Enum):
@@ -78,7 +98,7 @@ class ToolAndParams(BaseModel):
     def tool_name(self) -> str:
         return self.tool.name
 
-    def invoke_tool(self) -> str:
+    def invoke_tool(self) -> InvokeToolOutput:
         return self.tool.invoke_tool(self.params)
 
     def validate_params(self) -> PydanticModel:
@@ -293,14 +313,38 @@ class ChatAgent(object):
                 self.logger.info("Using tools!")
                 self._set_status_msg("Beginning tool use", status_callback_fn)
                 tools_and_results = []
+                tool_use_messages = self.get_pending_tool_calls_strs()
+                tool_use_chat_message = self.chat_history[-1]
+                starting_content = tool_use_chat_message.content
                 for idx, pending_tool in enumerate(self.get_pending_tool_calls()):
                     self._set_status_msg(f'Using Tool "{pending_tool.tool.name}"', status_callback_fn)
                     result = self._handle_tool_usage(pending_tool)
+                    if result.replace_input is not None:
+                        self.logger.info("Replacing input content in chat history")
+                        replacement_message = json.dumps(
+                            {
+                                "name": pending_tool.tool_name,
+                                "reason": pending_tool.reason,
+                                "parameters": {
+                                    k: "<!-- tool params stripped from chat history -->" for k in pending_tool.params
+                                },
+                            }
+                        )
+                        tool_use_chat_message.content = tool_use_chat_message.content.replace(
+                            tool_use_messages[idx], replacement_message
+                        )
+
+                    result_content = result.output_content
+
                     self.applied_tool_calls.append(pending_tool)
-                    self.applied_tool_call_results.append(result)
-                    tools_and_results.append((pending_tool, result))
+                    self.applied_tool_call_results.append(result_content)
+                    tools_and_results.append((pending_tool, result_content))
 
                 msg = "Tool use complete\n"
+
+                if tool_use_chat_message.content != starting_content:
+                    self.chat_history.pop()
+                    self.chat_history.append(tool_use_chat_message)
                 for tool, result in tools_and_results:
                     msg += f"<tool_used>{tool.tool_name}</tool_used>\n<tool_result>\n{result}\n</tool_result>\n"
 
@@ -326,12 +370,12 @@ class ChatAgent(object):
             case _:
                 raise ValueError(self.current_state)
 
-    def _handle_tool_usage(self, tool_to_use: ToolAndParams) -> str:
+    def _handle_tool_usage(self, tool_to_use: ToolAndParams) -> InvokeToolOutput:
         try:
             return tool_to_use.invoke_tool()
         except Exception as e:
             self.logger.warning("Caught exception using tool, providing error to Agent", exc_info=True)
-            return "TOOL FAILED!\n" + str(e)
+            return InvokeToolOutput(output_content="TOOL FAILED!\n" + str(e))
 
     def get_current_tool_by_name(self, tool_name: str) -> _CT:
         try:
@@ -421,6 +465,15 @@ class ChatAgent(object):
 
         return return_data
 
+    def get_pending_tool_calls_strs(self) -> list[str]:
+        if not self.chat_history:
+            return []
+        if not (self.chat_history[-1].role == "assistant" and "<tool>" in self.chat_history[-1].content):
+            return []
+        completion = self.chat_history[-1]
+
+        return self.extract_tool_call_strings_from_msg(completion.content)
+
     def get_pending_tool_calls_data(self) -> list[dict]:
         if not self.chat_history:
             return []
@@ -431,12 +484,15 @@ class ChatAgent(object):
         tool_calls = self.extract_tool_calls_from_msg(completion.content)
         return tool_calls
 
-    def extract_tool_calls_from_msg(self, msg: str) -> list[dict]:
+    def extract_tool_call_strings_from_msg(self, msg: str) -> list[str]:
         ai_msg, fn_call_str = msg.split("<tool>", maxsplit=1)
         tool_call_strs = [
             this_call_str.split("</tool>", maxsplit=1)[0] for this_call_str in fn_call_str.split("<tool>")
         ]
-        tool_calls = [json.loads(x) for x in tool_call_strs]
+        return tool_call_strs
+
+    def extract_tool_calls_from_msg(self, msg: str) -> list[dict]:
+        tool_calls = [json.loads(x) for x in self.extract_tool_call_strings_from_msg(msg)]
         return tool_calls
 
     def approve_pending_tool_usage(self):
