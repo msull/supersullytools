@@ -276,7 +276,6 @@ class MediaManager:
 
         upload_id = date_id()
         prefixed_file_name = "/".join([self.global_prefix, upload_id]).replace("//", "/")
-        breakpoint()
         try:
             # Get raw file size
             file_obj.seek(0, 2)
