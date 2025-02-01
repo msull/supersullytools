@@ -127,7 +127,7 @@ if encryption_key:
     encryption_key = base64.urlsafe_b64decode(encryption_key.encode())
 
 
-@st.experimental_dialog("Upload Media", width="large")
+@st.dialog("Upload Media", width="large")
 def upload_media_dialog():
     # File upload section
     st.header("Upload Media")
@@ -169,7 +169,7 @@ def upload_media_dialog():
                     encryption_key=encryption_key if encrypt_content else "",
                     encrypt_preview=encrypt_preview,
                 )
-                st.experimental_rerun()
+                st.rerun()
 
             except Exception as e:
                 st.error(f"Failed to upload file: {str(e)}")

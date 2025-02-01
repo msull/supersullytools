@@ -276,7 +276,7 @@ class MediaManager:
 
         upload_id = date_id()
         prefixed_file_name = "/".join([self.global_prefix, upload_id]).replace("//", "/")
-
+        breakpoint()
         try:
             # Get raw file size
             file_obj.seek(0, 2)
@@ -304,8 +304,17 @@ class MediaManager:
             file_size_bytes = write_obj.tell()
             write_obj.seek(0)
 
-            # Upload the file to S3
+            # Patch the close function with one that does nothing, to keep boto from closing it
+            # https://github.com/boto/s3transfer/issues/80
+            def patched_close():
+                pass
+
+            # Save the original close function
+            original_close = write_obj.close
+
+            write_obj.close = patched_close
             self.s3_client.upload_fileobj(write_obj, self.bucket_name, prefixed_file_name)
+            write_obj.close = original_close
 
             self.logger.info(
                 f"Successfully uploaded {source_file_name} to s3://{self.bucket_name}/{prefixed_file_name}"
