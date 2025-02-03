@@ -76,6 +76,15 @@ class OpenAiModel(CompletionModel):
     supports_system_msgs: bool = True
 
 
+class OllamaModel(CompletionModel):
+    provider: Literal["Ollama"] = "Ollama"
+    make: str = "Ollama"
+    supports_system_msgs: bool = True
+
+    input_price_per_1k: float = 0.0
+    output_price_per_1k: float = 0.0
+
+
 class BedrockCompletionResponse(BaseModel):
     """A helper class to use with parsing bedrock responses from AWS"""
 
@@ -97,16 +106,24 @@ class CompletionHandler:
         logger: Logger,
         openai_client: Optional["Client"] = None,
         bedrock_runtime_client: Optional["BedrockRuntimeClient"] = None,
+        # models to use, defaults to all standard otherwise
         available_models: Optional[list["CompletionModel"]] = None,
+        # extra models to add to above, useful for adding custom models to the standard list
+        extra_models: Optional[list["CompletionModel"]] = None,
         completion_tracker: Optional["CompletionTracker"] = None,
         debug_output_prompt_and_response=False,
         enable_openai=True,
         enable_bedrock=True,
+        enable_ollama=False,
+        ollama_address=None,
+        ollama_use_https=False,
+        ollama_load_dynamic_models=True,
         default_max_response_tokens: int = 1000,
     ):
         self.logger = logger
         self.enable_openai = enable_openai
         self.enable_bedrock = enable_bedrock
+        self.enable_ollama = enable_ollama
 
         self.completion_tracker = completion_tracker
 
@@ -117,6 +134,12 @@ class CompletionHandler:
         self.bedrock_runtime_client = None
         if self.enable_bedrock:
             self.bedrock_runtime_client = bedrock_runtime_client or boto3.client("bedrock-runtime")
+
+        if self.enable_ollama:
+            if ollama_address is None:
+                raise ValueError("Must specify ollama_address when enable_ollama is True")
+            s = "s" if ollama_use_https else ""
+            self.ollama_client = openai.Client(base_url=f"http{s}://{ollama_address}/v1", api_key="ollama")
 
         self.debug_output_prompt_and_response = debug_output_prompt_and_response
         if available_models:
@@ -131,6 +154,12 @@ class CompletionHandler:
             else:
                 # what do?
                 raise ValueError("No models specified")
+            # add ollama models from the server
+            if enable_ollama and ollama_load_dynamic_models:
+                ollama_models = []
+                for idx, model in enumerate(self.ollama_client.models.list()):
+                    ollama_models.append(OllamaModel(llm=model.id, llm_id=model.id, supports_images=True))
+                self.available_models += ollama_models
 
         self.default_max_response_tokens = default_max_response_tokens
 
@@ -163,6 +192,8 @@ class CompletionHandler:
                 response = self._get_openai_completion(model, prompt, max_response_tokens)
             case BedrockModel():
                 response = self._get_bedrock_completion(model, prompt, max_response_tokens)
+            case OllamaModel():
+                response = self._get_ollama_completion(model, prompt, max_response_tokens)
             case _:
                 raise ValueError(model)
         try:
@@ -269,6 +300,65 @@ class CompletionHandler:
             completion_time_ms=int((finished_at - started_at).total_seconds() * 1000),
             stop_reason=bedrock_response["stopReason"],
             response_metadata={"usage": bedrock_response["usage"], "metrics": bedrock_response["metrics"]},
+        )
+
+    def _get_ollama_completion(
+        self, llm: OpenAiModel, prompt: list[PromptMessage | ImagePromptMessage], max_response_tokens: int
+    ) -> "CompletionResponse":
+        if not self.enable_ollama:
+            raise RuntimeError("Ollama completions disabled!")
+        chat_history = []
+        debug_print_chat_history = []
+        for msg in prompt:
+            debug_print_chat_history.append({"role": msg.role, "content": msg.content})
+            if msg.role == "system":
+                role = msg.role if llm.supports_system_msgs else "user"
+            else:
+                role = msg.role
+            match msg:
+                case PromptMessage():
+                    chat_history.append({"role": role, "content": msg.content})
+                case ImagePromptMessage():
+                    content = [{"type": "text", "text": msg.content}]
+                    debug_print_chat_history.append({"role": role, "content": msg.content, "include_image": True})
+                    for image, image_fmt in zip(msg.images, msg.image_formats):
+                        content.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/{image_fmt};base64,{image}"},
+                            }
+                        )
+                    chat_history.append(
+                        {
+                            "role": role,
+                            "content": content,
+                        }
+                    )
+                case _:
+                    raise ValueError("Base prompt type")
+        started_at = datetime.now(timezone.utc)
+
+        self.logger.info("Generating Open AI ChatCompletion")
+        if self.debug_output_prompt_and_response:
+            self.logger.debug(f"LLM input:\n{chat_history}")
+        openai_response = self.ollama_client.chat.completions.create(
+            model=llm.llm_id, messages=chat_history, max_completion_tokens=max_response_tokens
+        )
+        if self.debug_output_prompt_and_response:
+            self.logger.debug(f"LLM response:\n{openai_response}")
+        finished_at = datetime.now(timezone.utc)
+
+        return CompletionResponse(
+            content=openai_response.choices[0].message.content,
+            input_tokens=openai_response.usage.prompt_tokens,
+            # reasoning_tokens=openai_response.usage.completion_tokens_details.reasoning_tokens or 0,
+            # cached_input_tokens=openai_response.usage.prompt_tokens_details.cached_tokens or 0,
+            output_tokens=openai_response.usage.completion_tokens,
+            llm_metadata=CompletionModel.model_validate(llm, from_attributes=True),
+            generated_at=finished_at,
+            stop_reason=openai_response.choices[0].finish_reason,
+            response_metadata=openai_response.model_dump(mode="json", exclude={"choices"}),
+            completion_time_ms=int((finished_at - started_at).total_seconds() * 1000),
         )
 
     def _get_openai_completion(

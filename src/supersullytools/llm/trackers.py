@@ -84,7 +84,11 @@ class UsageStats(BaseModel):
 
         results = {}
         for model in self.completions_by_model:
-            model_class: CompletionModel = model_class_lookup.get(model)
+            if model.startswith(("Ollama:", "AWS Bedrock:", "OpenAI:")):
+                actual_name = model.split(":", maxsplit=1)[1]
+            else:
+                actual_name = model
+            model_class: CompletionModel = model_class_lookup.get(actual_name)
             if not model_class:
                 continue  # Skip if model_class is not found
 
@@ -305,7 +309,9 @@ class CompletionTracker(object):
         if store_prompt_and_response is None:
             store_prompt_and_response = self.store_prompt_and_response
         par = PromptAndResponse(prompt=prompt, response=completion)
-        llm_to_track = model.llm
+
+        llm_to_track = model.provider + ":" + model.llm
+        # llm_to_track = model.llm
         trackers = override_trackers or self.trackers
         for tracker in trackers:
             if isinstance(tracker, SessionUsageTracking):
