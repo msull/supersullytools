@@ -1,7 +1,7 @@
 SuperSully Tools
 ================
 
-**Latest Version:** 14.0.0
+**Latest Version:** 14.1.0
 
 **SuperSullyTools** is a personal Python toolkit for prototyping and proof-of-concept development. It includes various utilities and helpers that I use when building projects, mostly in Python and Streamlit.  
 
