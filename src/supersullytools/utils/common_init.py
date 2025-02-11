@@ -40,6 +40,17 @@ def get_standard_completion_handler(
     store_source_tag: Optional[str] = None,
     **kwargs,
 ) -> CompletionHandler:
+    # grab the existing bedrock client, if the user passed one in
+    bedrock_client = kwargs.pop("bedrock_runtime_client", None)
+    if os.getenv("WANDB_API_KEY") and (weave_project := os.getenv("COMPLETION_TRACKING_WANDB_PROJECT")):
+        import boto3
+        import weave
+        from weave.integrations.bedrock import patch_client
+
+        weave.init(weave_project)
+        bedrock_client = boto3.client("bedrock-runtime")
+        patch_client(bedrock_client)
+
     if logger is None:
         from logzero import logger
     trackers = []
@@ -75,5 +86,6 @@ def get_standard_completion_handler(
             store_source_tag=store_source_tag,
             logger=logger,
         ),
+        bedrock_runtime_client=bedrock_client,
         **kwargs,
     )
