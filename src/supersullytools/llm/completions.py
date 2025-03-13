@@ -449,12 +449,32 @@ class Gpt4Omni(OpenAiModel):
     supports_images: bool = True
 
 
+class Gpt4OmniSearchPreview(OpenAiModel):
+    make: str = "OpenAI"
+    llm: str = "GPT 4 Omni - Search Preview"
+    llm_id: str = "gpt-4o-search-preview"
+    input_price_per_1k: float = 0.0025
+    # cached_input_price_per_1k: float = 0.00125
+    output_price_per_1k: float = 0.01
+    supports_images: bool = True
+
+
 class Gpt4OmniMini(OpenAiModel):
     make: str = "OpenAI"
     llm: str = "GPT 4 Omni Mini"
     llm_id: str = "gpt-4o-mini"
     input_price_per_1k: float = 0.000150
     cached_input_price_per_1k: float = 0.000075
+    output_price_per_1k: float = 0.0006
+    supports_images: bool = True
+
+
+class Gpt4OmniMiniSearchPreview(OpenAiModel):
+    make: str = "OpenAI"
+    llm: str = "GPT 4 Omni Mini - Search Preview"
+    llm_id: str = "gpt-4o-mini-search-preview"
+    input_price_per_1k: float = 0.000150
+    # cached_input_price_per_1k: float = 0.000075
     output_price_per_1k: float = 0.0006
     supports_images: bool = True
 
@@ -592,7 +612,9 @@ class Mixtral8x7B(Mistral7B):
 ALL_MODELS = [
     Gpt3p5Turbo(),
     Gpt4Omni(),
+    Gpt4OmniSearchPreview(),
     Gpt4OmniMini(),
+    Gpt4OmniMiniSearchPreview(),
     Gpt4Turbo(),
     OpenAIO1Preview(),
     OpenAIO1Mini(),
@@ -613,7 +635,9 @@ ALL_MODELS = [
 
 DEFAULT_USE_MODELS = [
     Gpt4Omni(),
+    Gpt4OmniSearchPreview(),
     Gpt4OmniMini(),
+    Gpt4OmniMiniSearchPreview(),
     Gpt4Turbo(),
     OpenAIO1Preview(),
     OpenAIO1Mini(),
